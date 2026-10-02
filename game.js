@@ -31,12 +31,17 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-loadSprite('tobi', 'assets/tobi-battle.png');
-loadSprite('lumi', 'assets/lumi-battle.png');
-loadSprite('enemy-ticket', 'assets/enemy-ticket.png');
-loadSprite('enemy-glove', 'assets/enemy-glove.png');
-loadSprite('enemy-umbrella', 'assets/enemy-umbrella.png');
-const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella' };
+const ASSET_V = 'v=0.4.1';
+loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
+loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
+loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
+loadSprite('enemy-glove', 'assets/enemy-glove.png?' + ASSET_V);
+loadSprite('enemy-umbrella', 'assets/enemy-umbrella.png?' + ASSET_V);
+loadSprite('enemy-can', 'assets/enemy-can.png?' + ASSET_V);
+loadSprite('enemy-paper', 'assets/enemy-paper.png?' + ASSET_V);
+loadSprite('enemy-pack', 'assets/enemy-pack.png?' + ASSET_V);
+const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella', can: 'enemy-can', paper: 'enemy-paper', pack: 'enemy-pack' };
+const ENEMY_DIMS = { ticket: [60, 60], glove: [56, 56], umb: [88, 46], can: [56, 56], paper: [64, 64], pack: [72, 72] };
 // 스프라이트 미리 축소 (모바일 성능)
 const PREP = {};
 function sprFor(key, w, h) {
@@ -71,9 +76,12 @@ const PASSIVES = {
   paw:    { name: '튼튼한 발바닥', icon: '🐾', max: 5, desc: '최대 HP +10' },
 };
 const ENEMY_TYPES = {
-  ticket: { name: '버려진 승차권', hp: 14, spd: 95,  dmg: 6,  xp: 1, r: 16 },
-  glove:  { name: '외짝 장갑',   hp: 11, spd: 125, dmg: 7,  xp: 2, r: 15, dasher: true },
-  umb:    { name: '잃어버린 우산', hp: 48, spd: 55,  dmg: 11, xp: 4, r: 23 },
+  ticket: { name: '찢어진 티켓', hp: 14, spd: 95,  dmg: 6,  xp: 1, r: 16 },
+  glove:  { name: '겨울 장갑',   hp: 11, spd: 125, dmg: 7,  xp: 2, r: 15, dasher: true },
+  umb:    { name: '버려진 우산', hp: 48, spd: 55,  dmg: 11, xp: 4, r: 23 },
+  can:    { name: '빈 음료캔',   hp: 10, spd: 140, dmg: 6,  xp: 2, r: 14 },
+  paper:  { name: '버려진 신문', hp: 55, spd: 50,  dmg: 10, xp: 4, r: 24 },
+  pack:   { name: '잃어버린 백팩', hp: 70, spd: 60,  dmg: 13, xp: 6, r: 26 },
 };
 const MAX_WEAPONS = 4, MAX_PASSIVES = 4;
 
@@ -544,7 +552,10 @@ function spawnEnemy(force) {
   const t = G.time;
   const pool = ['ticket', 'ticket', 'ticket'];
   if (t > 25 || force === 'glove') pool.push('glove', 'glove');
+  if (t > 45) pool.push('can', 'can');
   if (t > 70 || force === 'umb') pool.push('umb');
+  if (t > 110) pool.push('paper');
+  if (t > 150) pool.push('pack');
   const type = force || pool[randInt(0, pool.length - 1)];
   const base = ENEMY_TYPES[type];
   const hpMul = 1 + t / 200, dmgMul = 1 + t / 320;
@@ -688,7 +699,7 @@ function drawEnemy(e) {
   ctx.rotate(wob);
   ctx.scale(sc, sc);
   if (e.frozen > 0) ctx.globalAlpha = 0.7;
-  const dims = e.type === 'umb' ? [88, 46] : e.type === 'glove' ? [56, 56] : [60, 60];
+  const dims = ENEMY_DIMS[e.type] || [60, 60];
   const spr = sprFor(ENEMY_SPR[e.type], dims[0], dims[1]);
   if (spr) ctx.drawImage(spr, -dims[0] / 2, -dims[1] / 2 + bob, dims[0], dims[1]);
   // 장갑 돌진 텔레그래프
