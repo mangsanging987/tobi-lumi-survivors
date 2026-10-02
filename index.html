@@ -19,7 +19,7 @@
     <div id="xp-wrap"><div id="xp-bar"></div></div>
     <div id="hud-info"><span id="timer">0:00</span><span id="kills">0 처치</span><span id="level">Lv 1</span></div>
   </div>
-  <div id="bond-wrap" class="hidden"><div id="bond-bar"></div><span>유대감</span></div>
+  <div id="bond-wrap" class="hidden"><div id="bond-bar"></div><span id="bond-label">유대감</span></div>
   <div id="weapons-bar"></div>
 </div>
 
@@ -58,6 +58,14 @@
   <button id="btn-retry">다시 도전</button>
 </div>
 
-<script src="game.js?v=0.3.1"></script>
+<!-- Act 클리어 -->
+<div id="screen-clear" class="screen hidden">
+  <h2>🚂 ACT 1 CLEAR!</h2>
+  <p>막차에 무사히 탔다!</p>
+  <p id="clear-stats"></p>
+  <button id="btn-clear-retry">다시 도전</button>
+</div>
+
+<script src="game.js?v=0.4"></script>
 </body>
 </html>
