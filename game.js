@@ -31,15 +31,15 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.7.0';
+const ASSET_V = 'v=0.7.1';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
-// 캐릭터 걷기 애니메이션 프레임
-for (let i = 0; i < 4; i++) loadSprite('tobi-walk-' + i, `assets/tobi-walk-${i}.png?` + ASSET_V);
-for (let i = 0; i < 4; i++) loadSprite('lumi-walk-' + i, `assets/lumi-walk-${i}.png?` + ASSET_V);
+// 캐릭터 걷기 애니메이션 프레임 (6프레임)
+for (let i = 0; i < 6; i++) loadSprite('tobi-walk-' + i, `assets/tobi-walk-${i}.png?` + ASSET_V);
+for (let i = 0; i < 6; i++) loadSprite('lumi-walk-' + i, `assets/lumi-walk-${i}.png?` + ASSET_V);
 const CHAR_ANIM = {
-  tobi: { walk: [['tobi-walk-0', 0.786], ['tobi-walk-1', 0.725], ['tobi-walk-2', 0.733], ['tobi-walk-3', 0.746]] },
-  lumi: { walk: [['lumi-walk-0', 0.804], ['lumi-walk-1', 0.823], ['lumi-walk-2', 0.847], ['lumi-walk-3', 0.889]] },
+  tobi: { walk: [['tobi-walk-0', 0.819], ['tobi-walk-1', 0.828], ['tobi-walk-2', 0.806], ['tobi-walk-3', 0.768], ['tobi-walk-4', 0.863], ['tobi-walk-5', 0.866]] },
+  lumi: { walk: [['lumi-walk-0', 0.853], ['lumi-walk-1', 0.810], ['lumi-walk-2', 0.836], ['lumi-walk-3', 0.836], ['lumi-walk-4', 0.866], ['lumi-walk-5', 0.871]] },
 };
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
 loadSprite('enemy-glove', 'assets/enemy-glove.png?' + ASSET_V);
@@ -1143,7 +1143,7 @@ function drawPlayer() {
   let sprKey = G.char, sw = 76, sh = 76;
   if (anim) {
     sh = 104;
-    const f = p.moving ? Math.floor(G.time * 9) % 4 : 1;
+    const f = p.moving ? Math.floor(G.time * 10) % 6 : 2;
     let asp;
     [sprKey, asp] = anim.walk[f];
     sw = Math.round(sh * asp);
@@ -1168,9 +1168,9 @@ function drawPartner() {
     sh = 72;
     let asp;
     if (G.player.moving) {
-      const f = Math.floor(G.time * 9) % 4;
+      const f = Math.floor(G.time * 10) % 6;
       [sprKey, asp] = anim.walk[f];
-    } else [sprKey, asp] = anim.walk[1];
+    } else [sprKey, asp] = anim.walk[2];
     sw = Math.round(sh * asp);
   }
   const pspr = sprFor(sprKey, sw, sh);
