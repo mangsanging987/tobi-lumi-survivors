@@ -33,6 +33,10 @@ function loadSprite(key, src) {
 }
 loadSprite('tobi', 'assets/tobi-battle.png');
 loadSprite('lumi', 'assets/lumi-battle.png');
+loadSprite('enemy-ticket', 'assets/enemy-ticket.png');
+loadSprite('enemy-glove', 'assets/enemy-glove.png');
+loadSprite('enemy-umbrella', 'assets/enemy-umbrella.png');
+const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella' };
 
 // ============ Data ============
 const CHARS = {
@@ -454,64 +458,31 @@ function hurtPlayer(dmg, ang) {
   if (p.hp <= 0) { p.hp = 0; gameOver(); }
 }
 
-// ============ Enemy Art (귀엽 + 기괴) ============
-function drawEyes(x, y, r, color) {
-  ctx.save();
-  ctx.shadowColor = color; ctx.shadowBlur = 12;
-  ctx.fillStyle = color;
-  ctx.beginPath(); ctx.ellipse(x - r * 0.45, y, r * 0.28, r * 0.38, 0, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(x + r * 0.45, y, r * 0.28, r * 0.38, 0, 0, TAU); ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = '#1a0f00';
-  ctx.beginPath(); ctx.ellipse(x - r * 0.45, y + r * 0.08, r * 0.1, r * 0.16, 0, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(x + r * 0.45, y + r * 0.08, r * 0.1, r * 0.16, 0, 0, TAU); ctx.fill();
-}
+// ============ Enemy Art (스프라이트) ============
 function drawEnemy(e) {
-  const wob = Math.sin(G.time * 4 + e.seed) * 0.12;
-  ctx.save(); ctx.translate(e.x, e.y);
+  const wob = Math.sin(G.time * 4 + e.seed) * 0.08;
+  const img = SPR[ENEMY_SPR[e.type]];
+  const bob = e.type === 'umb' ? Math.sin(G.time * 2.2 + e.seed) * 3 : 0;
+  ctx.save();
+  ctx.translate(e.x, e.y);
   // 그림자
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.beginPath(); ctx.ellipse(0, e.r * 0.9, e.r * 0.9, e.r * 0.3, 0, 0, TAU); ctx.fill();
   ctx.rotate(wob);
-  const frozen = e.frozen > 0;
-  if (frozen) ctx.globalAlpha = 0.75;
-  if (e.type === 'ticket') {
-    // 버려진 승차권 — 누렇게 바랜 종이, 찢긴 단면
-    ctx.fillStyle = '#8f8464';
-    ctx.beginPath(); ctx.roundRect(-20, -13, 40, 26, 5); ctx.fill();
-    ctx.fillStyle = '#7a7052';
-    ctx.beginPath(); ctx.roundRect(-20, -13, 10, 26, 5); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(-10, -11); ctx.lineTo(-10, 11); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('ADMIT', 6, 3);
-    drawEyes(6, -1, 13, '#ffb02e');
-  } else if (e.type === 'glove') {
-    // 외짝 장갑 — 벙어리장갑, 돌진 전에는 눈이 붉어짐
-    const tele = e.tele > 0;
-    ctx.fillStyle = tele ? '#9c5a6e' : '#7d5f74';
-    ctx.beginPath(); ctx.roundRect(-13, -16, 26, 32, 10); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(13, -2, 7, 11, 0.5, 0, TAU); ctx.fill(); // 엄지
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-13, 8); ctx.lineTo(13, 8); ctx.stroke(); // 손목 주름
-    drawEyes(0, -3, 12, tele ? '#ff3b3b' : '#ffb02e');
-  } else if (e.type === 'umb') {
-    // 잃어버린 우산 — 처진 캐노피 아래로 눈이 빛남
-    const bob = Math.sin(G.time * 2.2 + e.seed) * 3;
-    ctx.translate(0, bob);
-    ctx.fillStyle = '#4a3a63';
-    ctx.beginPath(); ctx.moveTo(-26, 6);
-    ctx.quadraticCurveTo(0, -30, 26, 6);
-    ctx.quadraticCurveTo(13, -2, 0, 6); ctx.quadraticCurveTo(-13, -2, -26, 6);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.5;
-    for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 10, -16 + Math.abs(i) * 3); ctx.lineTo(i * 12, 5); ctx.stroke(); }
-    ctx.strokeStyle = '#3a2f52'; ctx.lineWidth = 4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, 24); ctx.quadraticCurveTo(0, 32, -8, 30); ctx.stroke();
-    drawEyes(0, -2, 14, '#c77dff');
+  if (e.frozen > 0) ctx.globalAlpha = 0.7;
+  if (img && img.complete && img.naturalWidth) {
+    if (e.type === 'umb') ctx.drawImage(img, -44, -23 + bob, 88, 46);
+    else if (e.type === 'glove') ctx.drawImage(img, -28, -28 + bob, 56, 56);
+    else ctx.drawImage(img, -30, -30 + bob, 60, 60);
+  }
+  // 장갑 돌진 텔레그래프
+  if (e.type === 'glove' && e.tele > 0) {
+    ctx.globalAlpha = 0.22; ctx.fillStyle = '#ff3b3b';
+    ctx.beginPath(); ctx.arc(0, 0, 30, 0, TAU); ctx.fill();
+    ctx.globalAlpha = e.frozen > 0 ? 0.7 : 1;
   }
   ctx.restore();
-  if (frozen) { // 빙결 표시
+  if (e.frozen > 0) { // 빙결 표시
     ctx.strokeStyle = 'rgba(140,220,255,0.8)'; ctx.lineWidth = 2;
     ctx.strokeRect(e.x - e.r - 3, e.y - e.r - 3, (e.r + 3) * 2, (e.r + 3) * 2);
   }
