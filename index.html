@@ -21,6 +21,7 @@
   </div>
   <div id="bond-wrap" class="hidden"><div id="bond-bar"></div><span id="bond-label">유대감</span></div>
   <div id="weapons-bar"></div>
+  <div id="keepsake-bar"></div>
 </div>
 
 <!-- 조이스틱 -->
@@ -45,10 +46,23 @@
   <p class="hint">📱 세로 모드 · 왼쪽 화면을 드래그해서 이동</p>
 </div>
 
+<!-- 시작 유물 선택 -->
+<div id="screen-startks" class="screen hidden">
+  <h2>❖ 시작 유물을 고르세요</h2>
+  <p class="desc">이 유물과 함께 지하철역으로 향합니다 (1개 선택)</p>
+  <div id="startks-grid"></div>
+</div>
+
 <!-- 레벨업 선택 -->
 <div id="screen-levelup" class="screen hidden">
   <h2>LEVEL UP!</h2>
   <div id="lv-choices"></div>
+</div>
+
+<!-- 유물 선택 -->
+<div id="screen-keepsake" class="screen hidden">
+  <h2>❖ 유물을 고르세요</h2>
+  <div id="ks-choices"></div>
 </div>
 
 <!-- 게임 오버 -->
@@ -66,6 +80,6 @@
   <button id="btn-clear-retry">다시 도전</button>
 </div>
 
-<script src="game.js?v=0.9.2"></script>
+<script src="game.js?v=0.10.0"></script>
 </body>
 </html>
