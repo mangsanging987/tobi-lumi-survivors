@@ -31,16 +31,15 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.6.1';
+const ASSET_V = 'v=0.7.0';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
-// 토비 애니메이션 프레임
+// 캐릭터 걷기 애니메이션 프레임
 for (let i = 0; i < 4; i++) loadSprite('tobi-walk-' + i, `assets/tobi-walk-${i}.png?` + ASSET_V);
-for (let i = 0; i < 3; i++) loadSprite('tobi-atk-' + i, `assets/tobi-atk-${i}.png?` + ASSET_V);
+for (let i = 0; i < 4; i++) loadSprite('lumi-walk-' + i, `assets/lumi-walk-${i}.png?` + ASSET_V);
 const CHAR_ANIM = {
-  tobi: { walk: [['tobi-walk-0', 0.786], ['tobi-walk-1', 0.725], ['tobi-walk-2', 0.733], ['tobi-walk-3', 0.746]],
-          atk: [['tobi-atk-0', 0.768], ['tobi-atk-1', 0.738], ['tobi-atk-2', 0.863]] },
-  // lumi: 시트 오는 대로 추가
+  tobi: { walk: [['tobi-walk-0', 0.786], ['tobi-walk-1', 0.725], ['tobi-walk-2', 0.733], ['tobi-walk-3', 0.746]] },
+  lumi: { walk: [['lumi-walk-0', 0.804], ['lumi-walk-1', 0.823], ['lumi-walk-2', 0.847], ['lumi-walk-3', 0.889]] },
 };
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
 loadSprite('enemy-glove', 'assets/enemy-glove.png?' + ASSET_V);
@@ -147,7 +146,7 @@ function newGame(charId) {
       lvl: 1, xp: 0, xpNeed: xpFor(1), r: 22,
       weapons: [{ id: c.weapon, lvl: 1, t: 0, ang: 0 }],
       passives: {}, keepsakes: {}, scarfCd: 0, face: 1, invuln: 0, atkAng: 0,
-      rewindUsed: false, snaps: [], snapT: 0, atkT: 0, moving: false,
+      rewindUsed: false, snaps: [], snapT: 0, moving: false,
     },
     partner: { x: -40, y: 30, bond: 0, char: charId === 'tobi' ? 'lumi' : 'tobi' },
     enemies: [], projs: [], gems: [], parts: [], floats: [],
@@ -270,7 +269,6 @@ function wDmg(base, w) {
 }
 function fireWeapon(w) {
   const p = G.player;
-  p.atkT = 0.32; // 공격 모션 재생
   const tgt = nearestEnemy(p.x, p.y, 700);
   const dir = tgt ? angTo(p.x, p.y, tgt.x, tgt.y) : (p.face > 0 ? 0 : Math.PI);
   p.atkAng = dir;
@@ -1140,21 +1138,14 @@ function drawPlayer() {
   if (p.invuln > 0 && Math.floor(G.time * 14) % 2 === 0) return; // 무적 깜빡임
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.beginPath(); ctx.ellipse(p.x, p.y + 30, 24, 8, 0, 0, TAU); ctx.fill();
-  // 애니메이션 상태: 공격 > 걷기 > idle
+  // 애니메이션: 걷기 / idle
   const anim = CHAR_ANIM[G.char];
   let sprKey = G.char, sw = 76, sh = 76;
   if (anim) {
     sh = 104;
+    const f = p.moving ? Math.floor(G.time * 9) % 4 : 1;
     let asp;
-    if (p.atkT > 0) {
-      const f = Math.min(2, Math.floor((0.32 - p.atkT) / 0.32 * 3));
-      [sprKey, asp] = anim.atk[f];
-    } else if (p.moving) {
-      const f = Math.floor(G.time * 9) % 4;
-      [sprKey, asp] = anim.walk[f];
-    } else {
-      [sprKey, asp] = anim.walk[1]; // idle
-    }
+    [sprKey, asp] = anim.walk[f];
     sw = Math.round(sh * asp);
   }
   const pspr = sprFor(sprKey, sw, sh);
@@ -1540,7 +1531,6 @@ function update(dt) {
   p.x += iv.x * sp * dt; p.y += iv.y * sp * dt;
   if (iv.x !== 0) p.face = iv.x > 0 ? 1 : -1;
   p.moving = !!(iv.x || iv.y);
-  if (p.atkT > 0) p.atkT -= dt;
   if (iv.x || iv.y) p.atkAng = Math.atan2(iv.y, iv.x);
   if (p.invuln > 0) p.invuln -= dt;
   // 되감기 스냅샷 (0.5초마다, 3초 보관)
