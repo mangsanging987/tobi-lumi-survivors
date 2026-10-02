@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.4.3';
+const ASSET_V = 'v=0.5.0';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
@@ -72,7 +72,44 @@ const WEAPONS = {
   bone:     { name: '뼈다귀 회전', icon: '🦴', max: 5, desc: '주변을 도는 뼈다귀' },
   star:     { name: '별똥별',    icon: '🌠', max: 5, desc: '가장 가까운 적 추적' },
   clockbomb:{ name: '시계탑 폭발', icon: '💥', max: 5, desc: '주기적 광역 폭발+슬로우' },
+  // ---- 진화 무기 (레벨업 진화로만 획득, max 1) ----
+  clawstorm:   { name: '폭풍 할퀴기', icon: '🌪️', max: 1, evo: true, desc: '3연속 베기, 범위 대폭 증가' },
+  steelfoot:   { name: '강철 발톱',  icon: '🦾', max: 1, evo: true, desc: '3연속 베기 + 적중 시 짧은 기절' },
+  eternalclock:{ name: '영원의 시계', icon: '⏳', max: 1, evo: true, desc: '나갔다 돌아오는 왕복 파동' },
+  homerun:     { name: '홈런볼',     icon: '⚾', max: 1, evo: true, ball: true, desc: '초고속 관통 강속구' },
+  lightningfetch:{ name: '번개 페치', icon: '⚡', max: 1, evo: true, ball: true, desc: '초고속 왕복 + 궤적에 번개 피해' },
+  satbone:     { name: '위성 뼈다귀', icon: '🛰️', max: 1, evo: true, desc: '3개의 뼈다귀, 넓은 궤도' },
+  meteorshower:{ name: '유성우',     icon: '☄️', max: 1, evo: true, desc: '추적탄 9연발 동시 발사' },
+  guardbell:   { name: '수호의 종',  icon: '🔔', max: 1, evo: true, desc: '광역 폭발 + 방어 필드 생성' },
+  infinityrally:{ name: '무한 랠리', icon: '🔁', max: 1, evo: true, ball: true, desc: '튈수록 강해지고 반드시 돌아옴' },
+  doomsday:    { name: '종말의 시계', icon: '⏰', max: 1, evo: true, desc: '파동 적중 시 폭발, 연쇄 반응' },
 };
+const EVOS = {
+  clawstorm:    { needs: { weapon: 'claw', passive: 'meat' } },
+  steelfoot:    { needs: { weapon: 'claw', passive: 'paw' } },
+  eternalclock: { needs: { weapon: 'wave', passive: 'magnet' } },
+  homerun:      { needs: { weapon: 'ball', passive: 'wind' } },
+  lightningfetch:{ needs: { weapon: 'boom', passive: 'wind' } },
+  satbone:      { needs: { weapon: 'bone', passive: 'magnet' } },
+  meteorshower: { needs: { weapon: 'star', passive: 'meat' } },
+  guardbell:    { needs: { weapon: 'clockbomb', passive: 'paw' } },
+  infinityrally:{ needs: { weapons: ['ball', 'boom'] } },
+  doomsday:     { needs: { weapons: ['wave', 'clockbomb'] } },
+};
+function evoCandidates() {
+  const p = G.player, out = [];
+  for (const id in EVOS) {
+    if (p.weapons.find(w => w.id === id)) continue; // 이미 진화됨
+    const nd = EVOS[id].needs;
+    if (nd.weapons) {
+      if (nd.weapons.every(wid => { const w = p.weapons.find(w => w.id === wid); return w && w.lvl >= WEAPONS[wid].max; })) out.push(id);
+    } else {
+      const w = p.weapons.find(w => w.id === nd.weapon);
+      if (w && w.lvl >= WEAPONS[nd.weapon].max && (p.passives[nd.passive] || 0) > 0) out.push(id);
+    }
+  }
+  return out;
+}
 const PASSIVES = {
   meat:   { name: '고기 간식',   icon: '🍖', max: 5, desc: '공격력 +8%' },
   wind:   { name: '바람',       icon: '💨', max: 5, desc: '이동속도 +6%' },
@@ -109,7 +146,7 @@ function newGame(charId) {
     elite1: false, elite2: false, elite3: false, bossSpawned: false,
     warn1: false, warn2: false, warn3: false, warnBoss: false,
     bondTier: 0, banner: null, bossActive: false,
-    spawnT: 0, shake: 0,
+    spawnT: 0, shake: 0, zones: [],
   };
 }
 function xpFor(lvl) { return Math.floor(6 + (lvl - 1) * 4 + Math.pow(lvl - 1, 1.7)); }
@@ -305,15 +342,105 @@ function fireWeapon(w) {
       w.t = Math.max(1.6, 3.1 - lvl * 0.2);
       break;
     }
+    // ============ 진화 무기 ============
+    case 'clawstorm': case 'steelfoot': { // 3연속 베기 (+기절)
+      const range = w.id === 'clawstorm' ? 195 : 170, dmg = wDmg(w.id === 'clawstorm' ? 15 : 14, w);
+      for (let k = -1; k <= 1; k++) {
+        const sa = dir + k * 0.38;
+        for (const e of G.enemies) {
+          if (dist2(p.x, p.y, e.x, e.y) < (range + e.r) * (range + e.r) &&
+              Math.abs(angDiff(angTo(p.x, p.y, e.x, e.y), sa)) < 0.85) {
+            const a = angTo(p.x, p.y, e.x, e.y);
+            damageEnemy(e, dmg, Math.cos(a) * 300, Math.sin(a) * 300);
+            if (w.id === 'steelfoot' && !e.isBoss) e.frozen = Math.max(e.frozen, 0.6);
+          }
+        }
+        G.parts.push({ kind: 'slash', x: p.x, y: p.y, ang: sa, t: -k * 0.05, dur: 0.22, range });
+      }
+      hurtProps(p.x, p.y, range, dmg);
+      w.t = 0.85;
+      break;
+    }
+    case 'eternalclock': { // 왕복 파동
+      for (let i = -1; i <= 1; i += 2) {
+        const a = dir + i * 0.12;
+        G.projs.push({ kind: 'wave2', x: p.x, y: p.y,
+          vx: Math.cos(a) * 430, vy: Math.sin(a) * 430,
+          dmg: wDmg(13, w), pierce: 99, r: 17, life: 4, t: 0, dur: 0.75, back: false, hitSet: new Set() });
+      }
+      w.t = 1.0;
+      break;
+    }
+    case 'homerun': { // 초고속 관통 강속구
+      G.projs.push({ kind: 'homer', x: p.x, y: p.y,
+        vx: Math.cos(dir) * 780, vy: Math.sin(dir) * 780,
+        dmg: wDmg(24, w), pierce: 9, r: 14, life: 1.2 });
+      G.parts.push({ kind: 'ring', x: p.x, y: p.y, t: 0, dur: 0.25, R: 40 });
+      w.t = 1.05;
+      break;
+    }
+    case 'lightningfetch': { // 초고속 왕복 + 번개 궤적
+      G.projs.push({ kind: 'zapboom', x: p.x, y: p.y, sx: p.x, sy: p.y,
+        vx: Math.cos(dir) * 800, vy: Math.sin(dir) * 800,
+        dmg: wDmg(11, w), r: 13, t: 0, dur: 0.4, back: false, hitSet: new Set(), trailT: 0 });
+      w.t = 1.1;
+      break;
+    }
+    case 'satbone': { // 위성 뼈다귀 (지속)
+      break; // 틱에서 처리
+    }
+    case 'meteorshower': { // 추적탄 9연발
+      for (let i = 0; i < 9; i++) {
+        G.projs.push({ kind: 'star', x: p.x + rand(-24, 24), y: p.y + rand(-24, 24),
+          vx: rand(-1, 1) * 260, vy: rand(-1, 1) * 260,
+          dmg: wDmg(11, w), r: 11, life: 2.6, tgt: null });
+      }
+      w.t = 1.35;
+      break;
+    }
+    case 'guardbell': { // 광역 폭발 + 방어 필드
+      const R = 260, dmg = wDmg(24, w);
+      for (const e of G.enemies) {
+        if (dist2(p.x, p.y, e.x, e.y) < (R + e.r) * (R + e.r)) {
+          const a = angTo(p.x, p.y, e.x, e.y);
+          damageEnemy(e, dmg, Math.cos(a) * 360, Math.sin(a) * 360);
+          e.slow = 2;
+        }
+      }
+      hurtProps(p.x, p.y, R, dmg);
+      G.parts.push({ kind: 'ring', x: p.x, y: p.y, t: 0, dur: 0.5, R });
+      G.zones.push({ kind: 'shield', x: p.x, y: p.y, r: 120, t: 4, dur: 4, tick: 0, dmg: wDmg(6, w), slow: 1.5 });
+      G.shake = Math.max(G.shake, 6);
+      w.t = 2.6;
+      break;
+    }
+    case 'infinityrally': { // 튈수록 강해지고 반드시 돌아옴
+      G.projs.push({ kind: 'rally', x: p.x, y: p.y,
+        vx: Math.cos(dir) * 520, vy: Math.sin(dir) * 520,
+        dmg: wDmg(12, w), pierce: 99, bounce: 6, bounceT: 0, back: false, r: 12, life: 6, hitSet: new Set() });
+      w.t = 1.2;
+      break;
+    }
+    case 'doomsday': { // 파동 적중 시 폭발
+      for (let i = -1; i <= 1; i++) {
+        const a = dir + i * 0.18;
+        G.projs.push({ kind: 'doom', x: p.x, y: p.y,
+          vx: Math.cos(a) * 400, vy: Math.sin(a) * 400,
+          dmg: wDmg(13, w), pierce: 5, r: 15, life: 1.6 });
+      }
+      w.t = 1.15;
+      break;
+    }
   }
 }
 function updateWeapons(dt) {
   const p = G.player;
   for (const w of p.weapons) {
     w.t -= dt;
-    if (w.id === 'bone') { // 상시 회전
-      w.ang = (w.ang || 0) + dt * (2.2 + w.lvl * 0.25);
-      const n = 2 + Math.floor(w.lvl / 3), R = 74, dmg = wDmg(7, w);
+    if (w.id === 'bone' || w.id === 'satbone') { // 상시 회전
+      const sat = w.id === 'satbone';
+      w.ang = (w.ang || 0) + dt * (sat ? 2.8 : 2.2 + w.lvl * 0.25);
+      const n = sat ? 3 : 2 + Math.floor(w.lvl / 3), R = sat ? 104 : 74, dmg = wDmg(sat ? 12 : 7, w);
       for (let i = 0; i < n; i++) {
         const a = w.ang + i * TAU / n;
         const bx = p.x + Math.cos(a) * R, by = p.y + Math.sin(a) * R;
@@ -349,13 +476,39 @@ function updateProjs(dt) {
         pr.vx = Math.cos(na) * sp; pr.vy = Math.sin(na) * sp;
       }
       pr.x += pr.vx * dt; pr.y += pr.vy * dt;
-    } else if (pr.kind === 'boom') { // 부메랑
+    } else if (pr.kind === 'boom' || pr.kind === 'zapboom' || pr.kind === 'wave2') { // 부메랑 (왕복)
       pr.t += dt;
+      if (pr.kind === 'zapboom') { // 번개 궤적
+        pr.trailT -= dt;
+        if (pr.trailT <= 0) {
+          pr.trailT = 0.06;
+          G.zones.push({ kind: 'zap', x: pr.x, y: pr.y, r: 45, t: 0.5, dur: 0.5, tick: 0, dmg: pr.dmg * 0.4 });
+        }
+      }
       if (!pr.back && pr.t >= pr.dur) { pr.back = true; }
       if (pr.back) {
-        const p = G.player, a = angTo(pr.x, pr.y, p.x, p.y), sp = 560;
+        const p = G.player, a = angTo(pr.x, pr.y, p.x, p.y), sp = pr.kind === 'zapboom' ? 800 : 560;
         pr.vx = Math.cos(a) * sp; pr.vy = Math.sin(a) * sp;
         if (dist2(pr.x, pr.y, p.x, p.y) < 30 * 30) { ps.splice(i, 1); continue; }
+      }
+      pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+    } else if (pr.kind === 'rally') { // 무한 랠리: 튈수록 강해지고 반드시 귀환
+      pr.bounceT += dt;
+      if (!pr.back) {
+        if (pr.bounceT > 0.5) {
+          pr.bounceT = 0; pr.bounce--; pr.dmg *= 1.25;
+          if (pr.bounce <= 0) pr.back = true;
+          else {
+            const tgt = nearestEnemy(pr.x, pr.y, 600);
+            const sp = Math.hypot(pr.vx, pr.vy) * 1.06;
+            if (tgt) { const a = angTo(pr.x, pr.y, tgt.x, tgt.y); pr.vx = Math.cos(a) * sp; pr.vy = Math.sin(a) * sp; }
+            else { pr.vx *= -1; pr.vy *= -1; }
+          }
+        }
+      } else {
+        const p = G.player, a = angTo(pr.x, pr.y, p.x, p.y), sp = 640;
+        pr.vx = Math.cos(a) * sp; pr.vy = Math.sin(a) * sp;
+        if (dist2(pr.x, pr.y, p.x, p.y) < 34 * 34) { ps.splice(i, 1); continue; }
       }
       pr.x += pr.vx * dt; pr.y += pr.vy * dt;
     } else {
@@ -376,15 +529,16 @@ function updateProjs(dt) {
     let dead = false;
     for (const e of G.enemies) {
       if (e.dead) continue;
-      if (pr.kind === 'boom' && pr.hitSet.has(e)) continue;
+      if (pr.hitSet && pr.hitSet.has(e)) continue;
       if (dist2(pr.x, pr.y, e.x, e.y) < (pr.r + e.r) * (pr.r + e.r)) {
         const a = Math.atan2(pr.vy, pr.vx);
         let dmg = pr.dmg;
         // 낡은 테니스공: 튈수록 강해짐
-        if (pr.kind === 'ball' && G.player.keepsakes.tennis && pr.bounce0 !== undefined)
+        if ((pr.kind === 'ball' || pr.kind === 'homer' || pr.kind === 'rally') && G.player.keepsakes.tennis && pr.bounce0 !== undefined)
           dmg = pr.dmg * (1 + 0.1 * Math.min(5, pr.bounce0 - pr.bounce));
         damageEnemy(e, dmg, Math.cos(a) * 180, Math.sin(a) * 180);
-        if (pr.kind === 'boom') { pr.hitSet.add(e); }
+        if (pr.kind === 'doom') explodeDoom(pr.x, pr.y, pr.dmg); // 종말의 시계: 연쇄 폭발
+        if (pr.hitSet) { pr.hitSet.add(e); }
         else if (pr.pierce > 0) { pr.pierce--; }
         else { dead = true; break; }
       }
@@ -399,6 +553,41 @@ function updateProjs(dt) {
       }
     }
     if (dead || pr.life <= 0) ps.splice(i, 1);
+  }
+}
+function explodeDoom(x, y, dmg) { // 종말의 시계: 적중 지점 폭발 + 미니 파동 생성
+  const R = 95, d = dmg * 0.8;
+  for (const e of G.enemies) {
+    if (e.dead) continue;
+    if (dist2(x, y, e.x, e.y) < (R + e.r) * (R + e.r)) {
+      const a = angTo(x, y, e.x, e.y);
+      damageEnemy(e, d, Math.cos(a) * 260, Math.sin(a) * 260);
+    }
+  }
+  hurtProps(x, y, R, d);
+  G.parts.push({ kind: 'ring', x, y, t: 0, dur: 0.35, R });
+  for (let s = 0; s < 2; s++) {
+    const a = rand(0, TAU);
+    G.projs.push({ kind: 'doommini', x, y, vx: Math.cos(a) * 380, vy: Math.sin(a) * 380,
+      dmg: dmg * 0.5, pierce: 2, r: 12, life: 0.9 });
+  }
+}
+function updateZones(dt) { // 방어 필드 / 번개 궤적
+  for (let i = G.zones.length - 1; i >= 0; i--) {
+    const z = G.zones[i]; z.t -= dt; z.tick -= dt;
+    if (z.tick <= 0) {
+      z.tick = 0.15;
+      for (const e of G.enemies) {
+        if (e.dead) continue;
+        if (dist2(z.x, z.y, e.x, e.y) < (z.r + e.r) * (z.r + e.r)) {
+          const a = angTo(z.x, z.y, e.x, e.y);
+          damageEnemy(e, z.dmg, Math.cos(a) * 120, Math.sin(a) * 120);
+          if (z.slow) e.slow = Math.max(e.slow || 0, z.slow);
+        }
+      }
+      hurtProps(z.x, z.y, z.r, z.dmg);
+    }
+    if (z.t <= 0) G.zones.splice(i, 1);
   }
 }
 
@@ -804,14 +993,31 @@ function drawProjs() {
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pr.x, pr.y - 7); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pr.x + 5, pr.y + 2); ctx.stroke();
-    } else if (pr.kind === 'ball' || pr.kind === 'boom') {
-      ctx.globalAlpha = 0.25; ctx.fillStyle = '#d8ff5d';
+    } else if (pr.kind === 'ball' || pr.kind === 'boom' || pr.kind === 'homer' || pr.kind === 'rally' || pr.kind === 'zapboom') {
+      const zap = pr.kind === 'zapboom';
+      const col = pr.kind === 'homer' ? '#ff9d5c' : pr.kind === 'rally' ? '#7dffd4' : '#d8ff5d';
+      ctx.globalAlpha = 0.25; ctx.fillStyle = zap ? '#ffe27d' : col;
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r * 1.9, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#cfe86b';
+      ctx.fillStyle = zap ? '#ffe27d' : col;
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.fill();
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r - 3, 0.6, 2.4); ctx.stroke();
+      if (zap) {
+        ctx.beginPath(); ctx.moveTo(pr.x - 6, pr.y); ctx.lineTo(pr.x, pr.y - 8); ctx.lineTo(pr.x + 5, pr.y + 1); ctx.lineTo(pr.x - 1, pr.y + 8); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r - 3, 0.6, 2.4); ctx.stroke();
+      }
+    } else if (pr.kind === 'wave2' || pr.kind === 'doom' || pr.kind === 'doommini') {
+      const doom = pr.kind !== 'wave2';
+      const col = doom ? '#c77dff' : '#7dd8ff';
+      ctx.globalAlpha = 0.3; ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r * 2.1, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = col; ctx.lineWidth = doom ? 6 : 4;
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pr.x, pr.y - 7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pr.x + 5, pr.y + 2); ctx.stroke();
     } else if (pr.kind === 'star') {
       ctx.save(); ctx.translate(pr.x, pr.y);
       ctx.globalAlpha = 0.3; ctx.fillStyle = '#ffe27d';
@@ -826,12 +1032,39 @@ function drawProjs() {
     }
   }
   // 뼈다귀 궤도
-  const p = G.player, bw = p.weapons.find(w => w.id === 'bone');
-  if (bw) {
-    const n = 2 + Math.floor(bw.lvl / 3), R = 74;
+  const p = G.player;
+  for (const bid of ['bone', 'satbone']) {
+    const bw = p.weapons.find(w => w.id === bid);
+    if (!bw) continue;
+    const sat = bid === 'satbone';
+    const n = sat ? 3 : 2 + Math.floor(bw.lvl / 3), R = sat ? 104 : 74;
     for (let i = 0; i < n; i++) {
       const a = bw.ang + i * TAU / n;
-      drawBone(p.x + Math.cos(a) * R, p.y + Math.sin(a) * R, a + 0.6, 1);
+      drawBone(p.x + Math.cos(a) * R, p.y + Math.sin(a) * R, a + 0.6, sat ? 1.25 : 1);
+    }
+    if (sat) { // 위성 궤도 링
+      ctx.globalAlpha = 0.2; ctx.strokeStyle = '#9adcff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+function drawZones() {
+  for (const z of G.zones) {
+    const k = z.t / z.dur;
+    if (z.kind === 'shield') {
+      ctx.globalAlpha = 0.16 * Math.min(1, k * 3);
+      ctx.fillStyle = '#7dd8ff';
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 0.5 * Math.min(1, k * 3);
+      ctx.strokeStyle = '#bfe9ff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1;
+    } else if (z.kind === 'zap') {
+      ctx.globalAlpha = 0.3 * k;
+      ctx.fillStyle = '#ffe27d';
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r * (0.5 + 0.5 * k), 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
     }
   }
 }
@@ -1172,6 +1405,7 @@ function openLevelUp() {
   const p = G.player, pool = [];
   const wCount = p.weapons.length, pCount = Object.keys(p.passives).length;
   for (const id in WEAPONS) {
+    if (WEAPONS[id].evo) continue; // 진화 무기는 선택지로 직접 등장 불가
     const w = p.weapons.find(w => w.id === id);
     if (!w && wCount < MAX_WEAPONS) pool.push({ t: 'new', id });
     else if (w && w.lvl < WEAPONS[id].max) pool.push({ t: 'up', id });
@@ -1181,7 +1415,8 @@ function openLevelUp() {
     if (l < PASSIVES[id].max && (l > 0 || pCount < MAX_PASSIVES)) pool.push({ t: 'passive', id });
   }
   for (let i = pool.length - 1; i > 0; i--) { const j = randInt(0, i);[pool[i], pool[j]] = [pool[j], pool[i]]; }
-  const picks = pool.slice(0, 3);
+  // 진화 후보는 확정 등장 (여러 개면 직접 고름)
+  const picks = evoCandidates().map(id => ({ t: 'evo', id })).concat(pool).slice(0, 3);
   lvChoices.innerHTML = '';
   if (!picks.length) {
     lvChoices.innerHTML = `<button class="lv-choice" data-i="heal"><b>🍖 간식 타임</b><p>HP 30 회복</p></button>`;
@@ -1189,6 +1424,7 @@ function openLevelUp() {
     let title, desc;
     if (c.t === 'new') { title = `${WEAPONS[c.id].icon} ${WEAPONS[c.id].name}`; desc = WEAPONS[c.id].desc + ' (신규!)'; }
     else if (c.t === 'up') { const w = p.weapons.find(w => w.id === c.id); title = `${WEAPONS[c.id].icon} ${WEAPONS[c.id].name} <span class="new">Lv ${w.lvl} → ${w.lvl + 1}</span>`; desc = WEAPONS[c.id].desc; }
+    else if (c.t === 'evo') { title = `✨ ${WEAPONS[c.id].icon} ${WEAPONS[c.id].name}`; desc = WEAPONS[c.id].desc + ' <span class="new">진화!</span>'; }
     else { const l = p.passives[c.id] || 0; title = `${PASSIVES[c.id].icon} ${PASSIVES[c.id].name} <span class="new">${l ? `Lv ${l} → ${l + 1}` : '신규!'}</span>`; desc = PASSIVES[c.id].desc; }
     const b = document.createElement('button');
     b.className = 'lv-choice'; b.innerHTML = `<b>${title}</b><p>${desc}</p>`;
@@ -1208,6 +1444,12 @@ function applyChoice(c) {
     if (c.id === 'paw') { p.maxHp += 10; p.hp = Math.min(p.maxHp, p.hp + 10); }
   }
   else if (c.t === 'heal') p.hp = Math.min(p.maxHp, p.hp + 30);
+  else if (c.t === 'evo') { // 진화: 재료 무기 제거 → 진화 무기 장착
+    const consumed = EVOS[c.id].needs.weapons || [EVOS[c.id].needs.weapon];
+    p.weapons = p.weapons.filter(w => !consumed.includes(w.id));
+    p.weapons.push({ id: c.id, lvl: 5, t: 0.3, ang: rand(0, TAU) });
+    setBanner(`✨ ${WEAPONS[c.id].name} 진화!`);
+  }
   lvScreen.classList.add('hidden');
   G.state = 'play';
   updateWeaponsBar();
@@ -1283,7 +1525,7 @@ function update(dt) {
       }
     }
   }
-  updateWeapons(dt); updateProjs(dt); updateEnemies(dt); updateGems(dt); updatePartner(dt); updatePickups(dt);
+  updateWeapons(dt); updateProjs(dt); updateZones(dt); updateEnemies(dt); updateGems(dt); updatePartner(dt); updatePickups(dt);
   // 레벨업
   while (p.xp >= p.xpNeed) {
     p.xp -= p.xpNeed; p.lvl++; p.xpNeed = xpFor(p.lvl);
@@ -1314,7 +1556,7 @@ function render() {
     drawProps();
     const sorted = [...G.enemies].sort((a, b) => a.y - b.y);
     for (const e of sorted) drawEnemy(e);
-    drawProjs();
+    drawProjs(); drawZones();
     drawPartner();
     drawPlayer();
     drawParts(1 / 60); drawFloats(1 / 60);
