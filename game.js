@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.10.0';
+const ASSET_V = 'v=0.10.1';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -205,18 +205,21 @@ const EVO_OF = {};
 for (const id in EVOS) {
   const nd = EVOS[id].needs;
   const mats = nd.weapons || [nd.weapon];
-  for (const m of mats) { (EVO_OF[m] = EVO_OF[m] || []).push({ evo: id, passive: nd.passive }); }
+  for (const m of mats) { (EVO_OF[m] = EVO_OF[m] || []).push({ evo: id, needs: nd }); }
 }
 function evoHint(wid) {
   const list = EVO_OF[wid];
   if (!list) return '';
-  return list.map(({ evo, passive }) => {
-    const p = G.player, E = WEAPONS[evo];
-    const needMax = passive ? ` + ${PASSIVES[passive].icon}` : '';
-    const hasMax = p.weapons.find(w => w.id === wid && w.lvl >= WEAPONS[wid].max);
-    const hasPas = !passive || (p.passives[passive] || 0) > 0;
-    const ok = hasMax && hasPas ? ' <b>진화 가능!</b>' : '';
-    return `<br><span class="evo-hint">Lv5${needMax} → ${E.icon} ${E.name}${ok}</span>`;
+  const ready = evoCandidates();
+  return list.map(({ evo, needs }) => {
+    const E = WEAPONS[evo];
+    let mats;
+    if (needs.weapons)
+      mats = needs.weapons.map(id => `${WEAPONS[id].icon} ${WEAPONS[id].name}`).join(' + ');
+    else
+      mats = `${WEAPONS[needs.weapon].icon} ${WEAPONS[needs.weapon].name} + ${PASSIVES[needs.passive].icon} ${PASSIVES[needs.passive].name}`;
+    const ok = ready.includes(evo) ? ' <b>✨진화 가능!</b>' : '';
+    return `<br><span class="evo-hint">${mats} → ${E.icon} ${E.name}${ok}</span>`;
   }).join('');
 }
 function evoCandidates() {
@@ -747,15 +750,17 @@ function updateZones(dt) { // 방어 필드 / 번개 궤적 / 독 장판 / 낙�
     }
     if (z.tick <= 0) {
       z.tick = 0.15;
-      for (const e of G.enemies) {
-        if (e.dead) continue;
-        if (dist2(z.x, z.y, e.x, e.y) < (z.r + e.r) * (z.r + e.r)) {
-          const a = angTo(z.x, z.y, e.x, e.y);
-          damageEnemy(e, z.dmg, Math.cos(a) * 120, Math.sin(a) * 120);
-          if (z.slow) e.slow = Math.max(e.slow || 0, z.slow);
+      if (z.dmg) { // 독 장판(pdmg만 있음)은 적에게 피해 없음
+        for (const e of G.enemies) {
+          if (e.dead) continue;
+          if (dist2(z.x, z.y, e.x, e.y) < (z.r + e.r) * (z.r + e.r)) {
+            const a = angTo(z.x, z.y, e.x, e.y);
+            damageEnemy(e, z.dmg, Math.cos(a) * 120, Math.sin(a) * 120);
+            if (z.slow) e.slow = Math.max(e.slow || 0, z.slow);
+          }
         }
+        hurtProps(z.x, z.y, z.r, z.dmg);
       }
-      hurtProps(z.x, z.y, z.r, z.dmg);
       // 독 장판: 서 있는 플레이어에게 지속 피해 (무적 무시)
       if (z.pdmg && dist2(z.x, z.y, p.x, p.y) < (z.r + p.r * 0.5) * (z.r + p.r * 0.5))
         hurtPlayer(z.pdmg * 0.15, angTo(z.x, z.y, p.x, p.y), true);
@@ -1070,7 +1075,11 @@ function updateEnemies(dt) {
       e.puddleT = (e.puddleT === undefined ? rand(2, 4) : e.puddleT) - dt;
       if (e.puddleT <= 0) {
         e.puddleT = rand(4, 7);
-        G.zones.push({ kind: 'poison', x: e.x, y: e.y, r: 55, t: 5, dur: 5, tick: 0, pdmg: 9 });
+        const blobs = [];
+        for (let b = 0; b < 7; b++)
+          blobs.push({ a: (b / 7) * TAU + rand(-0.35, 0.35), d: rand(0, 18), r: rand(26, 38) });
+        G.zones.push({ kind: 'poison', x: e.x, y: e.y, r: 55, t: 5, dur: 5, tick: 0, pdmg: 9,
+          seed: rand(0, 100), blobs });
         G.parts.push({ kind: 'poof', x: e.x, y: e.y, vx: 0, vy: -30, t: 0, dur: 0.5 });
       }
     } else if (e.type === 'umb') { // 원거리 사격
@@ -1392,12 +1401,31 @@ function drawZones() {
       ctx.beginPath(); ctx.arc(z.x, z.y, z.r * (0.5 + 0.5 * k), 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
     } else if (z.kind === 'poison') {
-      ctx.globalAlpha = 0.28 * Math.min(1, k * 3);
-      ctx.fillStyle = '#5dff6d';
-      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.fill();
-      ctx.globalAlpha = 0.5 * Math.min(1, k * 3);
-      ctx.strokeStyle = '#a8ffb0'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(z.x, z.y, z.r * 0.85, 0, TAU); ctx.stroke();
+      // 보라색 독 물웅덩이: 울퉁불퉁한 웅덩이 + 올라오는 기포
+      const fade = Math.min(1, k * 3);
+      ctx.globalAlpha = 0.42 * fade;
+      const g = ctx.createRadialGradient(z.x, z.y, 4, z.x, z.y, z.r);
+      g.addColorStop(0, '#c084fc'); g.addColorStop(0.55, '#9333ea'); g.addColorStop(1, '#581c87');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      for (const b of z.blobs) {
+        const bx = z.x + Math.cos(b.a) * b.d, by = z.y + Math.sin(b.a) * b.d;
+        ctx.moveTo(bx + b.r, by);
+        ctx.arc(bx, by, b.r, 0, TAU);
+      }
+      ctx.fill();
+      ctx.globalAlpha = 0.55 * fade;
+      ctx.strokeStyle = '#d8b4fe'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r * 0.92, 0, TAU); ctx.stroke();
+      // 기포
+      ctx.globalAlpha = 0.5 * fade;
+      ctx.fillStyle = '#e9d5ff';
+      for (let bi = 0; bi < 3; bi++) {
+        const bt = (G.time * 0.45 + z.seed + bi * 0.37) % 1;
+        const bx = z.x + Math.sin(z.seed * 9 + bi * 2.1) * z.r * 0.5;
+        const by = z.y + (0.55 - bt) * z.r * 1.1;
+        ctx.beginPath(); ctx.arc(bx, by, 4.5 * (1 - bt * 0.5), 0, TAU); ctx.fill();
+      }
       ctx.globalAlpha = 1;
     } else if (z.kind === 'rockwarn') {
       const pulse = 0.5 + 0.5 * Math.sin(G.time * 12);
@@ -1741,6 +1769,39 @@ function updatePartner(dt) {
   partnerBtn.classList.toggle('ready', pt.bond >= 100);
 }
 const partnerBtn = document.getElementById('partner-btn');
+// ---- 일시정지 + 인벤토리 ----
+const pauseBtn = document.getElementById('pause-btn');
+const pauseScreen = document.getElementById('screen-pause');
+function renderInventory() {
+  const p = G.player;
+  const w = p.weapons.map(x =>
+    `<div class="inv-row"><span>${WEAPONS[x.id].icon} ${WEAPONS[x.id].name}</span><span>Lv ${x.lvl}</span></div>`).join('');
+  const ps = Object.keys(p.passives).map(id =>
+    `<div class="inv-row"><span>${PASSIVES[id].icon} ${PASSIVES[id].name}</span><span>Lv ${p.passives[id]}</span></div>`).join('');
+  const ks = Object.keys(p.keepsakes).filter(id => KEEPSAKES[id]).map(id =>
+    `<div class="inv-row"><span>${KEEPSAKES[id].icon} ${KEEPSAKES[id].name}</span><span class="inv-desc">${KEEPSAKES[id].desc}</span></div>`).join('');
+  document.getElementById('pause-inv').innerHTML =
+    `<h3>🔫 무기 (${p.weapons.length}/${MAX_WEAPONS})</h3>${w || '<p class="inv-empty">없음</p>'}` +
+    `<h3>✨ 패시브 (${Object.keys(p.passives).length}/${MAX_PASSIVES})</h3>${ps || '<p class="inv-empty">없음</p>'}` +
+    `<h3>❖ 유물</h3>${ks || '<p class="inv-empty">없음</p>'}`;
+}
+pauseBtn.addEventListener('click', () => {
+  if (!G || G.state !== 'play') return;
+  G.state = 'paused';
+  renderInventory();
+  pauseScreen.classList.remove('hidden');
+});
+document.getElementById('btn-resume').addEventListener('click', () => {
+  pauseScreen.classList.add('hidden');
+  if (G && G.state === 'paused') G.state = 'play';
+});
+document.getElementById('btn-quit').addEventListener('click', () => {
+  pauseScreen.classList.add('hidden');
+  document.getElementById('hud').classList.add('hidden');
+  partnerBtn.classList.add('hidden');
+  titleScreen.classList.remove('hidden');
+  G = null;
+});
 partnerBtn.addEventListener('click', () => {
   if (!G || G.state !== 'play' || G.partner.bond < 100) return;
   G.partner.bond = 0;

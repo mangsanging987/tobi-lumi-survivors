@@ -18,6 +18,7 @@
     <div id="hp-wrap"><div id="hp-bar"></div><span id="hp-text"></span></div>
     <div id="xp-wrap"><div id="xp-bar"></div></div>
     <div id="hud-info"><span id="timer">0:00</span><span id="kills">0 처치</span><span id="level">Lv 1</span></div>
+    <button id="pause-btn" title="일시정지">⏸</button>
   </div>
   <div id="bond-wrap" class="hidden"><div id="bond-bar"></div><span id="bond-label">유대감</span></div>
   <div id="weapons-bar"></div>
@@ -80,6 +81,16 @@
   <button id="btn-clear-retry">다시 도전</button>
 </div>
 
-<script src="game.js?v=0.10.0"></script>
+<!-- 일시정지 / 인벤토리 -->
+<div id="screen-pause" class="screen hidden">
+  <h2>⏸ 일시정지</h2>
+  <div id="pause-inv"></div>
+  <div class="pause-btns">
+    <button id="btn-resume">▶ 계속하기</button>
+    <button id="btn-quit">🏠 그만두기</button>
+  </div>
+</div>
+
+<script src="game.js?v=0.10.1"></script>
 </body>
 </html>
