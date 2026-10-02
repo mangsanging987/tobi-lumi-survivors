@@ -855,10 +855,23 @@ partnerBtn.addEventListener('click', () => {
   G.partner.bond = 0;
   const p = G.player;
   if (G.partner.char === 'tobi') {
-    for (let i = 0; i < 10; i++) {
-      const a = i * TAU / 10;
-      G.projs.push({ kind: 'ball', x: p.x, y: p.y, vx: Math.cos(a) * 420, vy: Math.sin(a) * 420,
-        dmg: 14 * atkMul(), bounce: 0, r: 11, life: 1.1 });
+    // 충격파: 주변 적 데미지 + 넉백
+    const R = 170, sdmg = 30 * atkMul();
+    for (const e of G.enemies) {
+      if (e.dead) continue;
+      if (dist2(p.x, p.y, e.x, e.y) < (R + e.r) * (R + e.r)) {
+        const a = angTo(p.x, p.y, e.x, e.y);
+        damageEnemy(e, sdmg, Math.cos(a) * 420, Math.sin(a) * 420);
+      }
+    }
+    hurtProps(p.x, p.y, R, sdmg);
+    G.parts.push({ kind: 'ring', x: p.x, y: p.y, t: 0, dur: 0.5, R: R + 40 });
+    G.shake = Math.max(G.shake, 6);
+    // 테니스공 14발, 튕김 2회
+    for (let i = 0; i < 14; i++) {
+      const a = i * TAU / 14 + rand(-0.1, 0.1);
+      G.projs.push({ kind: 'ball', x: p.x, y: p.y, vx: Math.cos(a) * 460, vy: Math.sin(a) * 460,
+        dmg: 22 * atkMul(), bounce: 2, r: 12, life: 1.8 });
     }
     G.floats.push({ x: p.x, y: p.y - 50, txt: '신나게 물어와!', t: 0, big: true });
   } else {
