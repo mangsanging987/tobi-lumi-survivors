@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.4.2';
+const ASSET_V = 'v=0.4.3';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
@@ -43,6 +43,7 @@ loadSprite('enemy-pack', 'assets/enemy-pack.png?' + ASSET_V);
 loadSprite('enemy-elite-inspector', 'assets/enemy-elite-inspector.png?' + ASSET_V);
 loadSprite('enemy-elite-luggage', 'assets/enemy-elite-luggage.png?' + ASSET_V);
 loadSprite('enemy-elite-announce', 'assets/enemy-elite-announce.png?' + ASSET_V);
+loadSprite('enemy-boss-train', 'assets/enemy-boss-train.png?' + ASSET_V);
 const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella', can: 'enemy-can', paper: 'enemy-paper', pack: 'enemy-pack' };
 const ENEMY_DIMS = { ticket: [60, 60], glove: [56, 56], umb: [88, 46], can: [56, 56], paper: [64, 64], pack: [72, 72] };
 // 스프라이트 미리 축소 (모바일 성능)
@@ -757,29 +758,18 @@ function drawBoss(e) {
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.beginPath(); ctx.ellipse(0, 62, 95, 20, 0, 0, TAU); ctx.fill();
   ctx.rotate(ang);
-  const body = flash ? '#fff' : (e.phase === 2 ? '#3a2330' : '#2a2a3a');
-  const win = e.phase === 2 ? '#ff5d73' : '#ffd76d';
-  ctx.globalAlpha = 0.96; ctx.fillStyle = body;
-  ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(-95, -34, 160, 68, 12); else ctx.rect(-95, -34, 160, 68);
-  ctx.fill();
-  ctx.fillStyle = flash ? '#fff' : '#17171f';
-  ctx.fillRect(-95, -42, 160, 10);
-  ctx.fillStyle = win;
-  for (let i = 0; i < 3; i++) ctx.fillRect(-78 + i * 44, -20, 32, 24);
-  ctx.fillStyle = '#c9962e'; ctx.fillRect(-95, 22, 160, 4);
-  ctx.fillStyle = flash ? '#fff' : '#1d1d28';
-  ctx.fillRect(65, -34, 30, 68);
-  ctx.globalAlpha = 0.3; ctx.fillStyle = '#ffe27d';
-  ctx.beginPath(); ctx.arc(110, 0, 26, 0, TAU); ctx.fill();
-  ctx.globalAlpha = 1; ctx.fillStyle = '#fff8dc';
-  ctx.beginPath(); ctx.arc(98, 0, 10, 0, TAU); ctx.fill();
-  ctx.fillStyle = e.phase === 2 ? '#ff3b3b' : '#fff';
-  ctx.beginPath(); ctx.arc(78, -12, 6, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.arc(78, 12, 6, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#1d1d28';
-  ctx.beginPath(); ctx.arc(80, -12, 2.5, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.arc(80, 12, 2.5, 0, TAU); ctx.fill();
+  const pulse = e.phase === 2 ? Math.sin(G.time * 10) * 0.015 : Math.sin(G.time * 4) * 0.008;
+  ctx.scale(1 + pulse, 1 + pulse);
+  const BW = 240, BH = 222; // 시트 기본형 스프라이트
+  if (flash) ctx.globalAlpha = 0.72;
+  const bspr = sprFor('enemy-boss-train', BW, BH);
+  if (bspr) ctx.drawImage(bspr, -BW / 2, -BH / 2 + 10, BW, BH);
+  // Phase 2 붉은 기운
+  if (e.phase === 2) {
+    ctx.globalAlpha = 0.12 + 0.07 * Math.sin(G.time * 10);
+    ctx.fillStyle = '#ff2222';
+    ctx.beginPath(); ctx.arc(0, 10, 115, 0, TAU); ctx.fill();
+  }
   ctx.restore();
   if (e.ringR > 0) {
     ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffd76d'; ctx.lineWidth = 10;
