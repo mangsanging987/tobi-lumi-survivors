@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Tobi &amp; Lumi Survivors — Prototype</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="hud-top">
+    <div id="hp-wrap"><div id="hp-bar"></div><span id="hp-text"></span></div>
+    <div id="xp-wrap"><div id="xp-bar"></div></div>
+    <div id="hud-info"><span id="timer">0:00</span><span id="kills">0 처치</span><span id="level">Lv 1</span></div>
+  </div>
+  <div id="bond-wrap" class="hidden"><div id="bond-bar"></div><span>유대감</span></div>
+  <div id="weapons-bar"></div>
+</div>
+
+<!-- 조이스틱 -->
+<div id="joy" class="hidden"><div id="joy-knob"></div></div>
+<!-- 파트너 스킬 버튼 -->
+<button id="partner-btn" class="hidden">✨</button>
+
+<!-- 타이틀 / 캐릭터 선택 -->
+<div id="screen-title" class="screen">
+  <h1>🐾 Tobi &amp; Lumi<br><small>Survivors — Prototype</small></h1>
+  <p class="desc">주인을 잃은 물건들이 살아 움직이는 밤.<br>둘과 함께 살아남아라!</p>
+  <div class="char-row">
+    <button class="char-card" data-char="tobi">
+      <img src="assets/tobi-battle.png" alt="Tobi">
+      <b>Tobi</b><span>할퀴기 · 장난꾸러기</span>
+    </button>
+    <button class="char-card" data-char="lumi">
+      <img src="assets/lumi-battle.png" alt="Lumi">
+      <b>Lumi</b><span>시계 파동 · 되감기</span>
+    </button>
+  </div>
+  <p class="hint">📱 왼쪽 화면을 드래그해서 이동 (가로 모드 권장)</p>
+</div>
+
+<!-- 레벨업 선택 -->
+<div id="screen-levelup" class="screen hidden">
+  <h2>LEVEL UP!</h2>
+  <div id="lv-choices"></div>
+</div>
+
+<!-- 게임 오버 -->
+<div id="screen-over" class="screen hidden">
+  <h2>😵 쓰러졌다…</h2>
+  <p id="over-stats"></p>
+  <button id="btn-retry">다시 도전</button>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
