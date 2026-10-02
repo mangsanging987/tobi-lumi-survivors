@@ -93,6 +93,7 @@ function newGame(charId) {
     },
     partner: { x: -40, y: 30, bond: 0, char: charId === 'tobi' ? 'lumi' : 'tobi' },
     enemies: [], projs: [], gems: [], parts: [], floats: [],
+    pickups: [], props: [], propT: 2, ticketT: 100,
     spawnT: 0, shake: 0,
   };
 }
@@ -222,6 +223,13 @@ function fireWeapon(w) {
           damageEnemy(e, dmg, Math.cos(a) * 260, Math.sin(a) * 260);
         }
       }
+      for (const pr of G.props) {
+        if (pr.dead) continue;
+        if (dist2(p.x, p.y, pr.x, pr.y) < (range + pr.r) * (range + pr.r) &&
+            Math.abs(angDiff(angTo(p.x, p.y, pr.x, pr.y), dir)) < 0.95) {
+          damageProp(pr, dmg);
+        }
+      }
       G.parts.push({ kind: 'slash', x: p.x, y: p.y, ang: dir, t: 0, dur: 0.18, range });
       w.t = Math.max(0.45, 0.95 - lvl * 0.07);
       break;
@@ -275,6 +283,7 @@ function fireWeapon(w) {
           e.slow = 2;
         }
       }
+      hurtProps(p.x, p.y, R, dmg);
       G.parts.push({ kind: 'ring', x: p.x, y: p.y, t: 0, dur: 0.4, R });
       G.shake = Math.max(G.shake, 5);
       w.t = Math.max(1.6, 3.1 - lvl * 0.2);
@@ -300,6 +309,7 @@ function updateWeapons(dt) {
             e.boneT = 0.35;
           }
         }
+        hurtProps(bx, by, 18, dmg);
         if (i === 0) w.bx = bx, w.by = by; // 그리기용 (첫 번째만 저장, 나머지는 ang으로 계산)
       }
       continue;
@@ -359,6 +369,15 @@ function updateProjs(dt) {
         else { dead = true; break; }
       }
     }
+    // 오브젝트는 통과하면서 데미지 (막히지 않음)
+    if (!dead) {
+      for (const pr2 of G.props) {
+        if (pr2.dead) continue;
+        if (dist2(pr.x, pr.y, pr2.x, pr2.y) < (pr.r + pr2.r) * (pr.r + pr2.r)) {
+          damageProp(pr2, pr.dmg);
+        }
+      }
+    }
     if (dead || pr.life <= 0) ps.splice(i, 1);
   }
 }
@@ -390,6 +409,9 @@ function damageEnemy(e, dmg, kx, ky) {
   if (e.hp <= 0) {
     e.dead = true; G.kills++;
     G.gems.push({ x: e.x, y: e.y, vx: rand(-60, 60), vy: rand(-60, 60), v: e.xp });
+    const dr = Math.random();
+    if (dr < 0.025) spawnPickup(e.x, e.y, 'snack');
+    else if (dr < 0.030) spawnPickup(e.x, e.y, 'magnet');
     for (let i = 0; i < 8; i++)
       G.parts.push({ kind: 'poof', x: e.x, y: e.y, vx: rand(-140, 140), vy: rand(-140, 140), t: 0, dur: rand(0.3, 0.6) });
   }
@@ -630,7 +652,7 @@ function updateGems(dt) {
     const gm = G.gems[i];
     gm.x += gm.vx * dt; gm.y += gm.vy * dt; gm.vx *= 0.9; gm.vy *= 0.9;
     const d2 = dist2(gm.x, gm.y, p.x, p.y);
-    if (d2 < mr * mr) {
+    if (gm.mag || d2 < mr * mr) {
       const a = angTo(gm.x, gm.y, p.x, p.y), sp = 520;
       gm.x += Math.cos(a) * sp * dt; gm.y += Math.sin(a) * sp * dt;
     }
@@ -640,6 +662,185 @@ function updateGems(dt) {
     }
   }
 }
+// ============ Pickups & Props (랜덤 이벤트) ============
+const PROP_TYPES = {
+  trash: { hp: 20, r: 20 },
+  bench: { hp: 34, r: 30 },
+};
+function spawnPickup(x, y, kind) {
+  if (G.pickups.length > 24) return;
+  G.pickups.push({ kind, x, y, t: 0, life: 30, seed: rand(0, TAU) });
+}
+function spawnProp() {
+  if (G.props.length >= 10) return;
+  const a = rand(0, TAU), d = Math.max(W, H) * 0.55 + rand(0, 120);
+  const kind = Math.random() < 0.6 ? 'trash' : 'bench';
+  const base = PROP_TYPES[kind], hpMul = 1 + G.time / 300;
+  G.props.push({
+    kind, x: G.player.x + Math.cos(a) * d, y: G.player.y + Math.sin(a) * d,
+    hp: base.hp * hpMul, maxHp: base.hp * hpMul, r: base.r,
+    flash: 0, hitT: 0, dead: false, seed: rand(0, TAU),
+  });
+}
+function breakProp(pr) {
+  pr.dead = true;
+  const n = randInt(2, 4);
+  for (let i = 0; i < n; i++)
+    G.gems.push({ x: pr.x + rand(-14, 14), y: pr.y + rand(-14, 14), vx: rand(-80, 80), vy: rand(-80, 80), v: randInt(1, 3) });
+  const dr = Math.random();
+  if (dr < 0.15) spawnPickup(pr.x, pr.y - 10, 'snack');
+  else if (dr < 0.18) spawnPickup(pr.x, pr.y - 10, 'magnet');
+  for (let i = 0; i < 10; i++)
+    G.parts.push({ kind: 'poof', x: pr.x, y: pr.y, vx: rand(-160, 160), vy: rand(-160, 160), t: 0, dur: rand(0.3, 0.6) });
+  G.floats.push({ x: pr.x, y: pr.y - 30, txt: '쾅!', t: 0 });
+}
+function damageProp(pr, dmg) {
+  if (pr.dead || pr.hitT > 0) return;
+  pr.hp -= dmg; pr.flash = 0.12; pr.hitT = 0.2;
+  if (pr.hp <= 0) breakProp(pr);
+}
+function hurtProps(x, y, r, dmg) {
+  for (const pr of G.props) {
+    if (pr.dead) continue;
+    if (dist2(x, y, pr.x, pr.y) < (r + pr.r) * (r + pr.r)) damageProp(pr, dmg);
+  }
+}
+function applyPickup(kind) {
+  const p = G.player;
+  if (kind === 'snack') {
+    p.hp = Math.min(p.maxHp, p.hp + 25);
+    G.floats.push({ x: p.x, y: p.y - 50, txt: '🍖 +25', t: 0, big: true });
+  } else if (kind === 'magnet') {
+    for (const gm of G.gems) gm.mag = true;
+    G.floats.push({ x: p.x, y: p.y - 50, txt: '🧲 자석!', t: 0, big: true });
+  } else if (kind === 'goldticket') {
+    goldTicket();
+  }
+  for (let i = 0; i < 10; i++)
+    G.parts.push({ kind: 'poof', x: p.x, y: p.y - 10, vx: rand(-120, 120), vy: rand(-120, 120), t: 0, dur: rand(0.3, 0.5) });
+}
+function goldTicket() {
+  const p = G.player, roll = Math.random();
+  if (roll < 0.3) {
+    p.hp = Math.min(p.maxHp, p.hp + 35);
+    G.floats.push({ x: p.x, y: p.y - 50, txt: '🎫 든든한 간식! HP+35', t: 0, big: true });
+  } else if (roll < 0.55) {
+    for (const gm of G.gems) gm.mag = true;
+    G.floats.push({ x: p.x, y: p.y - 50, txt: '🎫 자석 파워!', t: 0, big: true });
+  } else if (roll < 0.8) {
+    p.maxHp += 10; p.hp = Math.min(p.maxHp, p.hp + 10);
+    G.floats.push({ x: p.x, y: p.y - 50, txt: '🎫 튼튼해졌다! 최대HP+10', t: 0, big: true });
+  } else {
+    const ups = p.weapons.filter(w => w.lvl < WEAPONS[w.id].max);
+    if (ups.length) {
+      const w = ups[randInt(0, ups.length - 1)];
+      w.lvl++;
+      G.floats.push({ x: p.x, y: p.y - 50, txt: `🎫 ${WEAPONS[w.id].name} Lv${w.lvl}!`, t: 0, big: true });
+      updateWeaponsBar();
+    } else {
+      p.hp = p.maxHp;
+      G.floats.push({ x: p.x, y: p.y - 50, txt: '🎫 풀 회복!', t: 0, big: true });
+    }
+  }
+}
+function updatePickups(dt) {
+  const p = G.player, mr = magR();
+  G.propT -= dt;
+  if (G.propT <= 0) { spawnProp(); G.propT = rand(4, 8); }
+  G.ticketT -= dt;
+  if (G.ticketT <= 0) {
+    const a = rand(0, TAU), d = Math.max(W, H) * 0.45;
+    spawnPickup(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 'goldticket');
+    G.ticketT = rand(95, 130);
+    G.floats.push({ x: p.x, y: p.y - 60, txt: '✨ 어딘가에 황금 티켓이...', t: 0 });
+  }
+  for (const pr of G.props) { if (pr.flash > 0) pr.flash -= dt; if (pr.hitT > 0) pr.hitT -= dt; }
+  for (let i = G.props.length - 1; i >= 0; i--) if (G.props[i].dead) G.props.splice(i, 1);
+  for (let i = G.pickups.length - 1; i >= 0; i--) {
+    const pk = G.pickups[i]; pk.t += dt; pk.life -= dt;
+    if (pk.life <= 0) { G.pickups.splice(i, 1); continue; }
+    const d2 = dist2(pk.x, pk.y, p.x, p.y);
+    if (d2 < mr * mr) {
+      const a = angTo(pk.x, pk.y, p.x, p.y), sp = 420;
+      pk.x += Math.cos(a) * sp * dt; pk.y += Math.sin(a) * sp * dt;
+    }
+    if (d2 < 30 * 30) { applyPickup(pk.kind); G.pickups.splice(i, 1); }
+  }
+}
+function drawProps() {
+  for (const pr of G.props) {
+    const flash = pr.flash > 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(pr.x, pr.y + pr.r * 0.7, pr.r * 0.8, pr.r * 0.25, 0, 0, TAU); ctx.fill();
+    if (pr.kind === 'trash') {
+      const w = 30, h = 36;
+      ctx.fillStyle = flash ? '#fff' : '#3d4a5c';
+      ctx.fillRect(pr.x - w / 2, pr.y - h / 2, w, h);
+      ctx.fillStyle = flash ? '#fff' : '#55637a';
+      for (let i = 0; i < 3; i++) ctx.fillRect(pr.x - w / 2 + 4 + i * 9, pr.y - h / 2 + 6, 4, h - 12);
+      ctx.fillStyle = flash ? '#fff' : '#2c3644';
+      ctx.fillRect(pr.x - w / 2 - 3, pr.y - h / 2 - 8, w + 6, 8);
+      ctx.fillStyle = '#ffd76d';
+      ctx.beginPath(); ctx.arc(pr.x - 6, pr.y - 2, 2.5, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(pr.x + 6, pr.y - 2, 2.5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#ffd76d'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(pr.x, pr.y + 3, 5, 0.3, Math.PI - 0.3); ctx.stroke();
+    } else {
+      const w = 56, h = 12;
+      ctx.fillStyle = flash ? '#fff' : '#5c4a3d';
+      ctx.fillRect(pr.x - w / 2, pr.y - 14, w, h);
+      ctx.fillRect(pr.x - w / 2, pr.y + 2, w, h);
+      ctx.fillStyle = flash ? '#fff' : '#3d3229';
+      ctx.fillRect(pr.x - w / 2 + 6, pr.y - 2, 8, 22);
+      ctx.fillRect(pr.x + w / 2 - 14, pr.y - 2, 8, 22);
+      ctx.fillStyle = '#ffd76d';
+      ctx.beginPath(); ctx.arc(pr.x - 8, pr.y - 8, 2.5, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(pr.x + 8, pr.y - 8, 2.5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#ffd76d'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(pr.x, pr.y - 3, 5, 0.3, Math.PI - 0.3); ctx.stroke();
+    }
+    if (pr.hp < pr.maxHp) {
+      const w = pr.r * 1.6;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(pr.x - w / 2, pr.y - pr.r - 12, w, 4);
+      ctx.fillStyle = '#ffb84d'; ctx.fillRect(pr.x - w / 2, pr.y - pr.r - 12, w * Math.max(0, pr.hp / pr.maxHp), 4);
+    }
+  }
+}
+function drawPickups() {
+  for (const pk of G.pickups) {
+    const bob = Math.sin(G.time * 4 + pk.seed) * 3;
+    const blink = pk.life < 5 ? (Math.sin(pk.t * 12) > 0 ? 1 : 0.25) : 1;
+    const halo = pk.kind === 'snack' ? '#ffb84d' : pk.kind === 'magnet' ? '#ff5d73' : '#ffd76d';
+    ctx.globalAlpha = 0.25 * blink; ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(pk.x, pk.y + bob, 18, 0, TAU); ctx.fill();
+    ctx.globalAlpha = blink;
+    if (pk.kind === 'snack') {
+      ctx.fillStyle = '#c98a4b';
+      ctx.beginPath(); ctx.ellipse(pk.x, pk.y + bob, 11, 8, 0.5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#efe8d8'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(pk.x + 7, pk.y + 5 + bob); ctx.lineTo(pk.x + 15, pk.y + 11 + bob); ctx.stroke();
+      ctx.fillStyle = '#efe8d8';
+      ctx.beginPath(); ctx.arc(pk.x + 16, pk.y + 12 + bob, 4, 0, TAU); ctx.fill();
+    } else if (pk.kind === 'magnet') {
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#ff5d73'; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.arc(pk.x, pk.y + bob, 10, Math.PI * 0.75, Math.PI * 2.25); ctx.stroke();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.arc(pk.x, pk.y + bob, 10, Math.PI * 0.75, Math.PI * 1.02); ctx.stroke();
+      ctx.beginPath(); ctx.arc(pk.x, pk.y + bob, 10, Math.PI * 1.98, Math.PI * 2.25); ctx.stroke();
+    } else {
+      ctx.save(); ctx.translate(pk.x, pk.y + bob); ctx.rotate(Math.sin(pk.t * 2) * 0.15);
+      ctx.fillStyle = '#ffd76d'; ctx.fillRect(-16, -10, 32, 20);
+      ctx.fillStyle = '#c9962e';
+      for (let px2 = -12; px2 <= 12; px2 += 6) { ctx.beginPath(); ctx.arc(px2, 0, 1.6, 0, TAU); ctx.fill(); }
+      ctx.fillStyle = '#7a5a1a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('★', 0, 4.5);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
 function updatePartner(dt) {
   const p = G.player, pt = G.partner;
   const tx = p.x - p.face * 52, ty = p.y + 26;
@@ -762,7 +963,7 @@ function update(dt) {
     if (G.time > 50 && Math.random() < 0.3) spawnEnemy();
     G.spawnT = Math.max(0.32, 1.15 - G.time * 0.004);
   }
-  updateWeapons(dt); updateProjs(dt); updateEnemies(dt); updateGems(dt); updatePartner(dt);
+  updateWeapons(dt); updateProjs(dt); updateEnemies(dt); updateGems(dt); updatePartner(dt); updatePickups(dt);
   // 레벨업
   while (p.xp >= p.xpNeed) {
     p.xp -= p.xpNeed; p.lvl++; p.xpNeed = xpFor(p.lvl);
@@ -789,6 +990,8 @@ function render() {
   drawBG(cx, cy);
   if (G) {
     drawGems();
+    drawPickups();
+    drawProps();
     const sorted = [...G.enemies].sort((a, b) => a.y - b.y);
     for (const e of sorted) drawEnemy(e);
     drawProjs();
