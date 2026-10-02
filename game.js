@@ -4,13 +4,12 @@
 // ============ Setup ============
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-let W = 0, H = 0, DPR = 1, bgGrad = null, vigGrad = null;
+let W = 0, H = 0, DPR = 1;
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth; H = window.innerHeight;
   canvas.width = W * DPR; canvas.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  bgGrad = null; vigGrad = null; // 재생성
 }
 window.addEventListener('resize', resize); resize();
 
@@ -177,31 +176,20 @@ function inputVec() {
 }
 
 // ============ Background (지하철 밤) ============
-function drawBG(px, py, t) {
-  if (!bgGrad) {
-    bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-    bgGrad.addColorStop(0, '#141126'); bgGrad.addColorStop(0.6, '#0e0c1c'); bgGrad.addColorStop(1, '#0a0916');
-    vigGrad = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
-    vigGrad.addColorStop(0, 'rgba(0,0,0,0)'); vigGrad.addColorStop(1, 'rgba(0,0,0,0.55)');
-  }
-  ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
-  // 바닥 타일
+// drawBG: 월드 좌표계에서 호출, (wx,wy)=화면 좌상단의 월드 좌표
+function drawBG(wx, wy) {
   ctx.strokeStyle = 'rgba(120,110,180,0.10)'; ctx.lineWidth = 1;
   const tile = 140;
-  const ox = -((px % tile) + tile) % tile, oy = -((py % tile) + tile) % tile;
+  const ox = wx - (((wx % tile) + tile) % tile);
+  const oy = wy - (((wy % tile) + tile) % tile);
   ctx.beginPath();
-  for (let x = ox; x < W; x += tile) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-  for (let y = oy; y < H; y += tile) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  for (let x = ox; x < wx + W; x += tile) { ctx.moveTo(x, wy); ctx.lineTo(x, wy + H); }
+  for (let y = oy; y < wy + H; y += tile) { ctx.moveTo(wx, y); ctx.lineTo(wx + W, y); }
   ctx.stroke();
-  // 승강장 안전선 (수평으로 스크롤)
-  const ly = H * 0.72 - (py % 400);
-  for (let k = -1; k < 3; k++) {
-    const y = ly + k * 400;
-    if (y < -20 || y > H + 20) continue;
-    ctx.fillStyle = 'rgba(255,200,90,0.10)'; ctx.fillRect(0, y, W, 6);
-  }
-  // 비네팅
-  ctx.fillStyle = vigGrad; ctx.fillRect(0, 0, W, H);
+  // 승강장 안전선 (월드 Y 기준 400px 간격)
+  const off = (((wy % 400) + 400) % 400);
+  ctx.fillStyle = 'rgba(255,200,90,0.10)';
+  for (let y = wy - off; y < wy + H; y += 400) ctx.fillRect(wx, y, W, 6);
 }
 
 // ============ Weapons ============
@@ -775,7 +763,6 @@ function update(dt) {
     G.spawnT = Math.max(0.32, 1.15 - G.time * 0.004);
   }
   updateWeapons(dt); updateProjs(dt); updateEnemies(dt); updateGems(dt); updatePartner(dt);
-  drawParts(0); drawFloats(0);
   // 레벨업
   while (p.xp >= p.xpNeed) {
     p.xp -= p.xpNeed; p.lvl++; p.xpNeed = xpFor(p.lvl);
@@ -790,10 +777,16 @@ function render() {
     ctx.translate(rand(-G.shake, G.shake), rand(-G.shake, G.shake));
     G.shake *= 0.88; if (G.shake < 0.3) G.shake = 0;
   }
+  // 1) 화면 전체 배경 (스크린 좌표계 — 매 프레임 전체 클리어)
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#141126'); g.addColorStop(0.6, '#0e0c1c'); g.addColorStop(1, '#0a0916');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  // 2) 월드 (카메라)
   const px = G ? G.player.x : 0, py = G ? G.player.y : 0;
   const cx = px - W / 2, cy = py - H / 2;
   ctx.save(); ctx.translate(-cx, -cy);
-  drawBG(cx, cy, G ? G.time : 0);
+  drawBG(cx, cy);
   if (G) {
     drawGems();
     const sorted = [...G.enemies].sort((a, b) => a.y - b.y);
@@ -801,9 +794,14 @@ function render() {
     drawProjs();
     drawPartner();
     drawPlayer();
+    drawParts(1 / 60); drawFloats(1 / 60);
   }
   ctx.restore();
-  if (G) { drawParts(1 / 60); drawFloats(1 / 60); }
+
+  // 3) 비네팅 (스크린 좌표계)
+  const v = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
 let lastTs = 0;
