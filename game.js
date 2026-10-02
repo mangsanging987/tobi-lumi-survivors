@@ -88,12 +88,15 @@ function newGame(charId) {
       x: 0, y: 0, hp: c.hp, maxHp: c.hp, speed: c.speed,
       lvl: 1, xp: 0, xpNeed: xpFor(1), r: 22,
       weapons: [{ id: c.weapon, lvl: 1, t: 0, ang: 0 }],
-      passives: {}, face: 1, invuln: 0, atkAng: 0,
+      passives: {}, keepsakes: {}, scarfCd: 0, face: 1, invuln: 0, atkAng: 0,
       rewindUsed: false, snaps: [], snapT: 0,
     },
     partner: { x: -40, y: 30, bond: 0, char: charId === 'tobi' ? 'lumi' : 'tobi' },
     enemies: [], projs: [], gems: [], parts: [], floats: [],
     pickups: [], props: [], propT: 2, ticketT: 100,
+    elite1: false, elite2: false, elite3: false, bossSpawned: false,
+    warn1: false, warn2: false, warn3: false, warnBoss: false,
+    bondTier: 0, banner: null, bossActive: false,
     spawnT: 0, shake: 0,
   };
 }
@@ -248,8 +251,9 @@ function fireWeapon(w) {
       const n = 1 + Math.floor(lvl / 2);
       for (let i = 0; i < n; i++) {
         const a = dir + rand(-0.15, 0.15) + (i - (n - 1) / 2) * 0.3;
+        const bn = 2 + lvl;
         G.projs.push({ kind: 'ball', x: p.x, y: p.y, vx: Math.cos(a) * 460, vy: Math.sin(a) * 460,
-          dmg: wDmg(10, w), bounce: 2 + lvl, r: 11, life: 3 });
+          dmg: wDmg(10, w), bounce: bn, bounce0: bn, r: 11, life: 3 });
       }
       w.t = Math.max(0.7, 1.45 - lvl * 0.1);
       break;
@@ -363,7 +367,11 @@ function updateProjs(dt) {
       if (pr.kind === 'boom' && pr.hitSet.has(e)) continue;
       if (dist2(pr.x, pr.y, e.x, e.y) < (pr.r + e.r) * (pr.r + e.r)) {
         const a = Math.atan2(pr.vy, pr.vx);
-        damageEnemy(e, pr.dmg, Math.cos(a) * 180, Math.sin(a) * 180);
+        let dmg = pr.dmg;
+        // 낡은 테니스공: 튈수록 강해짐
+        if (pr.kind === 'ball' && G.player.keepsakes.tennis && pr.bounce0 !== undefined)
+          dmg = pr.dmg * (1 + 0.1 * Math.min(5, pr.bounce0 - pr.bounce));
+        damageEnemy(e, dmg, Math.cos(a) * 180, Math.sin(a) * 180);
         if (pr.kind === 'boom') { pr.hitSet.add(e); }
         else if (pr.pierce > 0) { pr.pierce--; }
         else { dead = true; break; }
@@ -380,6 +388,154 @@ function updateProjs(dt) {
     }
     if (dead || pr.life <= 0) ps.splice(i, 1);
   }
+}
+
+// ============ Keepsake ============
+const KEEPSAKES = {
+  tennis: { name: '낡은 테니스공', desc: '공이 튈수록 강해짐 (튐당 +10%, 최대 5회)' },
+  watch: { name: '금간 손목시계', desc: '피격 시 1초 시간 정지 (3회)' },
+  scarf: { name: '따뜻한 목도리', desc: '둘러싸이면 3초 방어막 (쿨 30초)' },
+  milk: { name: '빈 우유곽', desc: 'HP 30% 이하에서 30 회복 (1회)' },
+};
+function dropKeepsake(x, y) {
+  const owned = G.player.keepsakes;
+  const rest = Object.keys(KEEPSAKES).filter(k => !owned[k]);
+  if (!rest.length) { G.player.hp = Math.min(G.player.maxHp, G.player.hp + 50); return; }
+  const kid = rest[randInt(0, rest.length - 1)];
+  G.pickups.push({ kind: 'keepsake', kid, x, y, t: 0, life: 60, seed: rand(0, TAU) });
+}
+
+// ============ Banner ============
+function setBanner(txt) { G.banner = { txt, t: 0 }; }
+
+// ============ Elite & Boss ============
+const ELITE_DEFS = {
+  ticket: { hp: 900, name: '거대 승차권' },
+  glove: { hp: 2200, name: '거대 장갑' },
+  umb: { hp: 3800, name: '거대 우산' },
+};
+function spawnMinion(type, x, y) {
+  if (G.enemies.length > 90) return;
+  const base = ENEMY_TYPES[type], t = G.time;
+  const hpMul = 1 + t / 200, dmgMul = 1 + t / 320;
+  G.enemies.push({
+    type, x, y, hp: base.hp * hpMul, maxHp: base.hp * hpMul,
+    spd: base.spd * rand(0.9, 1.1), dmg: base.dmg * dmgMul, xp: base.xp, r: base.r,
+    vx: 0, vy: 0, flash: 0, slow: 0, frozen: 0, boneT: 0, dead: false,
+    seed: rand(0, TAU), dashT: rand(0, 2), dashing: 0, tele: 0,
+  });
+}
+function spawnElite(kind) {
+  const base = ENEMY_TYPES[kind], def = ELITE_DEFS[kind];
+  const t = G.time, hpMul = 1 + t / 200;
+  const a = rand(0, TAU), d = Math.max(W, H) * 0.6;
+  G.enemies.push({
+    type: kind, elite: true, ename: def.name,
+    x: G.player.x + Math.cos(a) * d, y: G.player.y + Math.sin(a) * d,
+    hp: def.hp * hpMul, maxHp: def.hp * hpMul,
+    spd: base.spd * 0.85, dmg: base.dmg * 2 * (1 + t / 320), xp: 0, r: base.r * 1.7,
+    vx: 0, vy: 0, flash: 0, slow: 0, frozen: 0, boneT: 0, dead: false,
+    seed: rand(0, TAU), dashT: rand(0, 2), dashing: 0, tele: 0,
+    patT: 2.5, warnT: 0, chargeA: 0, charging: 0,
+  });
+  setBanner(`⚠ ${def.name} 출현!`);
+}
+function updateElite(e, dt) {
+  const p = G.player, a = angTo(e.x, e.y, p.x, p.y);
+  if (e.type === 'ticket') { // 돌진
+    if (e.charging > 0) {
+      e.charging -= dt;
+      e.x += Math.cos(e.chargeA) * e.spd * 3.4 * dt;
+      e.y += Math.sin(e.chargeA) * e.spd * 3.4 * dt;
+    } else if (e.warnT > 0) {
+      e.warnT -= dt; e.chargeA = a;
+      if (e.warnT <= 0) { e.charging = 0.7; G.shake = Math.max(G.shake, 3); }
+    } else {
+      e.x += Math.cos(a) * e.spd * dt; e.y += Math.sin(a) * e.spd * dt;
+      e.patT -= dt;
+      if (e.patT <= 0 && dist2(e.x, e.y, p.x, p.y) < 420 * 420) { e.warnT = 0.7; e.patT = 5; }
+    }
+  } else if (e.type === 'glove') { // 소환
+    e.x += Math.cos(a) * e.spd * dt; e.y += Math.sin(a) * e.spd * dt;
+    e.patT -= dt;
+    if (e.patT <= 0) {
+      e.patT = 8;
+      for (let i = 0; i < 2; i++) {
+        const sa = rand(0, TAU);
+        spawnMinion('ticket', e.x + Math.cos(sa) * 50, e.y + Math.sin(sa) * 50);
+      }
+      G.floats.push({ x: e.x, y: e.y - 60, txt: '소환!', t: 0 });
+    }
+  } else { // umb: 점멸 강타
+    e.x += Math.cos(a) * e.spd * dt; e.y += Math.sin(a) * e.spd * dt;
+    e.patT -= dt;
+    if (e.patT <= 0) {
+      e.patT = 6;
+      const ta = rand(0, TAU);
+      e.x = p.x + Math.cos(ta) * 110; e.y = p.y + Math.sin(ta) * 110;
+      G.parts.push({ kind: 'ring', x: e.x, y: e.y, t: 0, dur: 0.35, R: 110 });
+      G.shake = Math.max(G.shake, 4);
+      if (p.invuln <= 0 && dist2(e.x, e.y, p.x, p.y) < 110 * 110)
+        hurtPlayer(14, angTo(e.x, e.y, p.x, p.y));
+    }
+  }
+  if (p.invuln <= 0 && dist2(e.x, e.y, p.x, p.y) < (e.r + p.r - 4) * (e.r + p.r - 4))
+    hurtPlayer(e.dmg, angTo(e.x, e.y, p.x, p.y));
+}
+function spawnBoss() {
+  const p = G.player;
+  const a = rand(0, TAU), d = Math.max(W, H) * 0.7;
+  G.enemies.push({
+    type: 'ticket', isBoss: true, elite: true, ename: 'THE LAST TRAIN',
+    x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d,
+    hp: 12000, maxHp: 12000, spd: 46, dmg: 20, xp: 0, r: 70,
+    vx: 0, vy: 0, flash: 0, slow: 0, frozen: 0, boneT: 0, dead: false,
+    seed: rand(0, TAU), dashT: 0, dashing: 0, tele: 0,
+    bstate: 'idle', bt: 3, chargeA: 0, summonT: 8, ringT: 6, ringR: 0, ringHit: false, phase: 1,
+  });
+  G.bossActive = true;
+  setBanner('🚂 THE LAST TRAIN');
+}
+function updateBoss(e, dt) {
+  const p = G.player;
+  const spMul = e.slow > 0 ? 0.45 : 1;
+  if (e.hp < e.maxHp * 0.5 && e.phase === 1) {
+    e.phase = 2;
+    setBanner('🚂 분노의 질주!');
+  }
+  const a = angTo(e.x, e.y, p.x, p.y);
+  if (e.bstate === 'idle') {
+    e.x += Math.cos(a) * e.spd * spMul * dt; e.y += Math.sin(a) * e.spd * spMul * dt;
+    e.bt -= dt;
+    if (e.bt <= 0) { e.bstate = 'warn'; e.bt = 1.0; }
+  } else if (e.bstate === 'warn') {
+    e.chargeA = a; e.bt -= dt;
+    if (e.bt <= 0) { e.bstate = 'charge'; e.bt = 0.9; G.shake = Math.max(G.shake, 5); }
+  } else if (e.bstate === 'charge') {
+    const sp = (e.phase === 2 ? 640 : 520) * spMul;
+    e.x += Math.cos(e.chargeA) * sp * dt; e.y += Math.sin(e.chargeA) * sp * dt;
+    e.bt -= dt;
+    if (e.bt <= 0) { e.bstate = 'idle'; e.bt = e.phase === 2 ? 2 : 3; }
+  }
+  e.summonT -= dt;
+  if (e.summonT <= 0) {
+    e.summonT = e.phase === 2 ? 8 : 11;
+    for (let i = 0; i < 3; i++) spawnMinion('ticket', e.x + rand(-60, 60), e.y + rand(-60, 60));
+  }
+  if (e.phase === 2) {
+    e.ringT -= dt;
+    if (e.ringT <= 0 && e.ringR <= 0) { e.ringT = 7; e.ringR = 1; e.ringHit = false; }
+  }
+  if (e.ringR > 0) {
+    e.ringR += 320 * dt;
+    if (!e.ringHit && p.invuln <= 0) {
+      const d = Math.hypot(p.x - e.x, p.y - e.y);
+      if (Math.abs(d - e.ringR) < 20) { e.ringHit = true; hurtPlayer(16, angTo(e.x, e.y, p.x, p.y)); }
+    }
+    if (e.ringR > 320) e.ringR = 0;
+  }
+  if (p.invuln <= 0 && dist2(e.x, e.y, p.x, p.y) < (e.r + p.r - 4) * (e.r + p.r - 4))
+    hurtPlayer(e.dmg, angTo(e.x, e.y, p.x, p.y));
 }
 
 // ============ Enemies ============
@@ -408,10 +564,19 @@ function damageEnemy(e, dmg, kx, ky) {
   G.floats.push({ x: e.x, y: e.y - e.r - 6, txt: Math.round(dmg), t: 0 });
   if (e.hp <= 0) {
     e.dead = true; G.kills++;
-    G.gems.push({ x: e.x, y: e.y, vx: rand(-60, 60), vy: rand(-60, 60), v: e.xp });
-    const dr = Math.random();
-    if (dr < 0.025) spawnPickup(e.x, e.y, 'snack');
-    else if (dr < 0.030) spawnPickup(e.x, e.y, 'magnet');
+    if (e.isBoss) { victory(); return; }
+    if (e.elite) {
+      for (let i = 0; i < 10; i++)
+        G.gems.push({ x: e.x + rand(-20, 20), y: e.y + rand(-20, 20), vx: rand(-90, 90), vy: rand(-90, 90), v: 5 });
+      dropKeepsake(e.x, e.y);
+      G.bondTier = Math.min(2, G.bondTier + 1);
+      setBanner('유대감 상승! Bond ' + ['I', 'II', 'III'][G.bondTier]);
+    } else {
+      G.gems.push({ x: e.x, y: e.y, vx: rand(-60, 60), vy: rand(-60, 60), v: e.xp });
+      const dr = Math.random();
+      if (dr < 0.025) spawnPickup(e.x, e.y, 'snack');
+      else if (dr < 0.030) spawnPickup(e.x, e.y, 'magnet');
+    }
     for (let i = 0; i < 8; i++)
       G.parts.push({ kind: 'poof', x: e.x, y: e.y, vx: rand(-140, 140), vy: rand(-140, 140), t: 0, dur: rand(0.3, 0.6) });
   }
@@ -422,6 +587,8 @@ function updateEnemies(dt) {
     if (e.frozen > 0) { e.frozen -= dt; continue; } // 시간 정지 중
     if (e.flash > 0) e.flash -= dt;
     if (e.slow > 0) e.slow -= dt;
+    if (e.isBoss) { updateBoss(e, dt); e.vx *= 0.86; e.vy *= 0.86; continue; }
+    if (e.elite) { updateElite(e, dt * (e.slow > 0 ? 0.45 : 1)); e.vx *= 0.86; e.vy *= 0.86; continue; }
     const spMul = e.slow > 0 ? 0.45 : 1;
     const a = angTo(e.x, e.y, p.x, p.y);
     if (e.type === 'glove') { // 돌진 패턴
@@ -450,10 +617,11 @@ function updateEnemies(dt) {
       hurtPlayer(e.dmg, angTo(e.x, e.y, p.x, p.y)); // 적→플레이어 방향으로 넉백
     }
   }
-  // 분리 (겹침 해소)
+  // 분리 (겹침 해소, 보스는 제외)
   const es = G.enemies;
   for (let i = 0; i < es.length; i++) for (let j = i + 1; j < es.length; j++) {
     const a = es[i], b = es[j];
+    if (a.isBoss || b.isBoss) continue;
     const dx = b.x - a.x, dy = b.y - a.y, rr = a.r + b.r;
     const d2 = dx * dx + dy * dy;
     if (d2 < rr * rr && d2 > 0.01) {
@@ -480,20 +648,45 @@ function hurtPlayer(dmg, ang) {
   p.x += Math.cos(ang) * 26; p.y += Math.sin(ang) * 26;
   G.shake = Math.max(G.shake, 6);
   G.floats.push({ x: p.x, y: p.y - 40, txt: '-' + Math.round(dmg), t: 0, hurt: true });
+  if (p.hp > 0) {
+    // 금간 손목시계: 피격 시 1초 시간 정지 (3회)
+    if (p.keepsakes.watch && (p.keepsakes.watchN || 0) > 0) {
+      p.keepsakes.watchN--;
+      for (const e of G.enemies) {
+        if (e.isBoss) e.slow = Math.max(e.slow, 1);
+        else e.frozen = Math.max(e.frozen, 1);
+      }
+      G.floats.push({ x: p.x, y: p.y - 60, txt: '⏱ 시간 정지!', t: 0, big: true });
+    }
+    // 빈 우유곽: HP 30% 이하에서 30 회복 (1회)
+    if (p.keepsakes.milk && !p.keepsakes.milkUsed && p.hp <= p.maxHp * 0.3) {
+      p.keepsakes.milkUsed = true;
+      p.hp = Math.min(p.maxHp, p.hp + 30);
+      G.floats.push({ x: p.x, y: p.y - 60, txt: '🥛 우유 한 모금! +30', t: 0, big: true });
+    }
+  }
   if (p.hp <= 0) { p.hp = 0; gameOver(); }
 }
 
 // ============ Enemy Art (스프라이트) ============
 function drawEnemy(e) {
+  if (e.isBoss) { drawBoss(e); return; }
   const wob = Math.sin(G.time * 4 + e.seed) * 0.08;
   const img = SPR[ENEMY_SPR[e.type]];
   const bob = e.type === 'umb' ? Math.sin(G.time * 2.2 + e.seed) * 3 : 0;
+  const sc = e.elite ? 1.7 : 1; // Elite는 크게
   ctx.save();
   ctx.translate(e.x, e.y);
   // 그림자
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.beginPath(); ctx.ellipse(0, e.r * 0.9, e.r * 0.9, e.r * 0.3, 0, 0, TAU); ctx.fill();
+  if (e.elite) { // Elite 붉은 링
+    ctx.strokeStyle = e.warnT > 0 ? '#ff3b3b' : 'rgba(255,80,80,0.55)';
+    ctx.lineWidth = e.warnT > 0 ? 5 : 3;
+    ctx.beginPath(); ctx.ellipse(0, e.r * 0.7, e.r * 1.05, e.r * 0.4, 0, 0, TAU); ctx.stroke();
+  }
   ctx.rotate(wob);
+  ctx.scale(sc, sc);
   if (e.frozen > 0) ctx.globalAlpha = 0.7;
   const dims = e.type === 'umb' ? [88, 46] : e.type === 'glove' ? [56, 56] : [60, 60];
   const spr = sprFor(ENEMY_SPR[e.type], dims[0], dims[1]);
@@ -505,6 +698,14 @@ function drawEnemy(e) {
     ctx.globalAlpha = e.frozen > 0 ? 0.7 : 1;
   }
   ctx.restore();
+  if (e.elite) { // Elite 이름 + HP바
+    ctx.textAlign = 'center'; ctx.font = 'bold 13px sans-serif';
+    ctx.fillStyle = '#ff8080';
+    ctx.fillText(e.ename, e.x, e.y - e.r - 22);
+    const w = e.r * 2.4;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(e.x - w / 2, e.y - e.r - 16, w, 6);
+    ctx.fillStyle = '#ff5d5d'; ctx.fillRect(e.x - w / 2, e.y - e.r - 16, w * Math.max(0, e.hp / e.maxHp), 6);
+  }
   if (e.frozen > 0) { // 빙결 표시
     ctx.strokeStyle = 'rgba(140,220,255,0.8)'; ctx.lineWidth = 2;
     ctx.strokeRect(e.x - e.r - 3, e.y - e.r - 3, (e.r + 3) * 2, (e.r + 3) * 2);
@@ -521,6 +722,59 @@ function drawEnemy(e) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(e.x - w / 2, e.y - e.r - 10, w, 4);
     ctx.fillStyle = '#ff5d73'; ctx.fillRect(e.x - w / 2, e.y - e.r - 10, w * clamp(e.hp / e.maxHp, 0, 1), 4);
   }
+}
+// ============ Boss: THE LAST TRAIN ============
+function drawBoss(e) {
+  const p = G.player, flash = e.flash > 0;
+  const ang = e.bstate === 'charge' ? e.chargeA : angTo(e.x, e.y, p.x, p.y);
+  // 돌진 텔레그래프
+  if (e.bstate === 'warn') {
+    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.chargeA);
+    ctx.globalAlpha = 0.16 + 0.1 * Math.sin(G.time * 20); ctx.fillStyle = '#ff3b3b';
+    ctx.fillRect(0, -55, 1400, 110);
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath(); ctx.ellipse(0, 62, 95, 20, 0, 0, TAU); ctx.fill();
+  ctx.rotate(ang);
+  const body = flash ? '#fff' : (e.phase === 2 ? '#3a2330' : '#2a2a3a');
+  const win = e.phase === 2 ? '#ff5d73' : '#ffd76d';
+  ctx.globalAlpha = 0.96; ctx.fillStyle = body;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-95, -34, 160, 68, 12); else ctx.rect(-95, -34, 160, 68);
+  ctx.fill();
+  ctx.fillStyle = flash ? '#fff' : '#17171f';
+  ctx.fillRect(-95, -42, 160, 10);
+  ctx.fillStyle = win;
+  for (let i = 0; i < 3; i++) ctx.fillRect(-78 + i * 44, -20, 32, 24);
+  ctx.fillStyle = '#c9962e'; ctx.fillRect(-95, 22, 160, 4);
+  ctx.fillStyle = flash ? '#fff' : '#1d1d28';
+  ctx.fillRect(65, -34, 30, 68);
+  ctx.globalAlpha = 0.3; ctx.fillStyle = '#ffe27d';
+  ctx.beginPath(); ctx.arc(110, 0, 26, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1; ctx.fillStyle = '#fff8dc';
+  ctx.beginPath(); ctx.arc(98, 0, 10, 0, TAU); ctx.fill();
+  ctx.fillStyle = e.phase === 2 ? '#ff3b3b' : '#fff';
+  ctx.beginPath(); ctx.arc(78, -12, 6, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(78, 12, 6, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#1d1d28';
+  ctx.beginPath(); ctx.arc(80, -12, 2.5, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(80, 12, 2.5, 0, TAU); ctx.fill();
+  ctx.restore();
+  if (e.ringR > 0) {
+    ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffd76d'; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.ringR, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = 'center'; ctx.font = 'bold 15px sans-serif';
+  ctx.fillStyle = '#ffb84d';
+  ctx.fillText('🚂 ' + e.ename, e.x, e.y - 100);
+  const w = 220;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(e.x - w / 2, e.y - 92, w, 10);
+  ctx.fillStyle = e.phase === 2 ? '#ff5d5d' : '#ffb84d';
+  ctx.fillRect(e.x - w / 2, e.y - 92, w * Math.max(0, e.hp / e.maxHp), 10);
 }
 function drawBone(x, y, a, s) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.scale(s, s);
@@ -705,8 +959,8 @@ function hurtProps(x, y, r, dmg) {
     if (dist2(x, y, pr.x, pr.y) < (r + pr.r) * (r + pr.r)) damageProp(pr, dmg);
   }
 }
-function applyPickup(kind) {
-  const p = G.player;
+function applyPickup(pk) {
+  const p = G.player, kind = pk.kind;
   if (kind === 'snack') {
     p.hp = Math.min(p.maxHp, p.hp + 25);
     G.floats.push({ x: p.x, y: p.y - 50, txt: '🍖 +25', t: 0, big: true });
@@ -715,6 +969,13 @@ function applyPickup(kind) {
     G.floats.push({ x: p.x, y: p.y - 50, txt: '🧲 자석!', t: 0, big: true });
   } else if (kind === 'goldticket') {
     goldTicket();
+  } else if (kind === 'keepsake') {
+    const K = KEEPSAKES[pk.kid];
+    p.keepsakes[pk.kid] = true;
+    if (pk.kid === 'watch') p.keepsakes.watchN = 3;
+    G.floats.push({ x: p.x, y: p.y - 50, txt: `📿 ${K.name}!`, t: 0, big: true });
+    G.floats.push({ x: p.x, y: p.y - 76, txt: K.desc, t: 0 });
+    setBanner(`📿 Keepsake: ${K.name}`);
   }
   for (let i = 0; i < 10; i++)
     G.parts.push({ kind: 'poof', x: p.x, y: p.y - 10, vx: rand(-120, 120), vy: rand(-120, 120), t: 0, dur: rand(0.3, 0.5) });
@@ -764,7 +1025,7 @@ function updatePickups(dt) {
       const a = angTo(pk.x, pk.y, p.x, p.y), sp = 420;
       pk.x += Math.cos(a) * sp * dt; pk.y += Math.sin(a) * sp * dt;
     }
-    if (d2 < 30 * 30) { applyPickup(pk.kind); G.pickups.splice(i, 1); }
+    if (d2 < 30 * 30) { applyPickup(pk); G.pickups.splice(i, 1); }
   }
 }
 function drawProps() {
@@ -828,13 +1089,21 @@ function drawPickups() {
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 9;
       ctx.beginPath(); ctx.arc(pk.x, pk.y + bob, 10, Math.PI * 0.75, Math.PI * 1.02); ctx.stroke();
       ctx.beginPath(); ctx.arc(pk.x, pk.y + bob, 10, Math.PI * 1.98, Math.PI * 2.25); ctx.stroke();
-    } else {
+    } else if (pk.kind === 'goldticket') {
       ctx.save(); ctx.translate(pk.x, pk.y + bob); ctx.rotate(Math.sin(pk.t * 2) * 0.15);
       ctx.fillStyle = '#ffd76d'; ctx.fillRect(-16, -10, 32, 20);
       ctx.fillStyle = '#c9962e';
       for (let px2 = -12; px2 <= 12; px2 += 6) { ctx.beginPath(); ctx.arc(px2, 0, 1.6, 0, TAU); ctx.fill(); }
       ctx.fillStyle = '#7a5a1a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('★', 0, 4.5);
+      ctx.restore();
+    } else if (pk.kind === 'keepsake') {
+      ctx.save(); ctx.translate(pk.x, pk.y + bob); ctx.rotate(Math.sin(pk.t * 2) * 0.15);
+      ctx.fillStyle = '#b48cff'; ctx.fillRect(-14, -10, 28, 20);
+      ctx.fillStyle = '#7a5cff';
+      for (let px2 = -9; px2 <= 9; px2 += 6) { ctx.beginPath(); ctx.arc(px2, 0, 1.6, 0, TAU); ctx.fill(); }
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('❖', 0, 4.5);
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -853,10 +1122,10 @@ const partnerBtn = document.getElementById('partner-btn');
 partnerBtn.addEventListener('click', () => {
   if (!G || G.state !== 'play' || G.partner.bond < 100) return;
   G.partner.bond = 0;
-  const p = G.player;
+  const p = G.player, tier = G.bondTier || 0;
   if (G.partner.char === 'tobi') {
-    // 충격파: 주변 적 데미지 + 넉백
-    const R = 170, sdmg = 30 * atkMul();
+    // 충격파: 주변 적 데미지 + 넉백 (Bond 단계별 강화)
+    const R = [170, 200, 240][tier], sdmg = [30, 36, 44][tier] * atkMul();
     for (const e of G.enemies) {
       if (e.dead) continue;
       if (dist2(p.x, p.y, e.x, e.y) < (R + e.r) * (R + e.r)) {
@@ -867,15 +1136,20 @@ partnerBtn.addEventListener('click', () => {
     hurtProps(p.x, p.y, R, sdmg);
     G.parts.push({ kind: 'ring', x: p.x, y: p.y, t: 0, dur: 0.5, R: R + 40 });
     G.shake = Math.max(G.shake, 6);
-    // 테니스공 14발, 튕김 2회
-    for (let i = 0; i < 14; i++) {
-      const a = i * TAU / 14 + rand(-0.1, 0.1);
+    // 테니스공 (Bond 단계별 강화)
+    const n = [14, 18, 22][tier], bdmg = [22, 26, 30][tier] * atkMul();
+    for (let i = 0; i < n; i++) {
+      const a = i * TAU / n + rand(-0.1, 0.1);
       G.projs.push({ kind: 'ball', x: p.x, y: p.y, vx: Math.cos(a) * 460, vy: Math.sin(a) * 460,
-        dmg: 22 * atkMul(), bounce: 2, r: 12, life: 1.8 });
+        dmg: bdmg, bounce: 2, bounce0: 2, r: 12, life: 1.8 });
     }
     G.floats.push({ x: p.x, y: p.y - 50, txt: '신나게 물어와!', t: 0, big: true });
   } else {
-    for (const e of G.enemies) e.frozen = 3;
+    const fz = [3, 4.5, 6][tier];
+    for (const e of G.enemies) {
+      if (e.isBoss) e.slow = Math.max(e.slow, fz);
+      else e.frozen = fz;
+    }
     G.floats.push({ x: p.x, y: p.y - 50, txt: '잠깐 멈춰!', t: 0, big: true });
     G.parts.push({ kind: 'ring', x: p.x, y: p.y, t: 0, dur: 0.6, R: 300 });
   }
@@ -936,6 +1210,7 @@ const hpBar = document.getElementById('hp-bar'), hpText = document.getElementByI
 const xpBar = document.getElementById('xp-bar'), timerEl = document.getElementById('timer');
 const killsEl = document.getElementById('kills'), levelEl = document.getElementById('level');
 const weaponsBar = document.getElementById('weapons-bar');
+const bondLabel = document.getElementById('bond-label');
 let hudT = 0;
 function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
@@ -949,6 +1224,7 @@ function updateHUD(dt) {
   levelEl.textContent = `Lv ${p.lvl}`;
   const bw = document.getElementById('bond-bar');
   if (bw) bw.style.width = G.partner.bond + '%';
+  if (bondLabel) bondLabel.textContent = '유대감 ' + ['I', 'II', 'III'][G.bondTier || 0];
 }
 function updateWeaponsBar() {
   const p = G.player;
@@ -975,6 +1251,29 @@ function update(dt) {
     spawnEnemy();
     if (G.time > 50 && Math.random() < 0.3) spawnEnemy();
     G.spawnT = Math.max(0.32, 1.15 - G.time * 0.004);
+  }
+  // 타임라인 (Elite & Boss)
+  if (!G.elite1 && G.time >= 180) { G.elite1 = true; spawnElite('ticket'); }
+  if (!G.elite2 && G.time >= 360) { G.elite2 = true; spawnElite('glove'); }
+  if (!G.elite3 && G.time >= 540) { G.elite3 = true; spawnElite('umb'); }
+  if (!G.bossSpawned && G.time >= 600) { G.bossSpawned = true; spawnBoss(); }
+  if (!G.warn1 && G.time >= 170) { G.warn1 = true; setBanner('⚠ Elite 접근 중…'); }
+  if (!G.warn2 && G.time >= 350) { G.warn2 = true; setBanner('⚠ Elite 접근 중…'); }
+  if (!G.warn3 && G.time >= 530) { G.warn3 = true; setBanner('⚠ Elite 접근 중…'); }
+  if (!G.warnBoss && G.time >= 590) { G.warnBoss = true; setBanner('🚂 THE LAST TRAIN 접근 중…'); }
+  // 따뜻한 목도리: 둘러싸이면 3초 방어막 (쿨 30초)
+  if (p.keepsakes.scarf) {
+    p.scarfCd = Math.max(0, (p.scarfCd || 0) - dt);
+    if (p.scarfCd <= 0 && p.invuln <= 0) {
+      let cnt = 0;
+      for (const e of G.enemies) {
+        if (!e.dead && dist2(e.x, e.y, p.x, p.y) < 130 * 130 && ++cnt >= 6) break;
+      }
+      if (cnt >= 6) {
+        p.scarfCd = 30; p.invuln = 3;
+        G.floats.push({ x: p.x, y: p.y - 50, txt: '🧣 목도리의 온기!', t: 0, big: true });
+      }
+    }
   }
   updateWeapons(dt); updateProjs(dt); updateEnemies(dt); updateGems(dt); updatePartner(dt); updatePickups(dt);
   // 레벨업
@@ -1018,6 +1317,32 @@ function render() {
   const v = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
   v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
   ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  if (G) {
+    // 보스 HP바
+    if (G.bossActive) {
+      const boss = G.enemies.find(e => e.isBoss && !e.dead);
+      if (boss) {
+        ctx.textAlign = 'center'; ctx.font = 'bold 14px sans-serif';
+        ctx.fillStyle = '#ffb84d'; ctx.fillText('🚂 THE LAST TRAIN', W / 2, 34);
+        const bw2 = Math.min(420, W - 60);
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(W / 2 - bw2 / 2, 42, bw2, 10);
+        ctx.fillStyle = boss.phase === 2 ? '#ff5d5d' : '#ffb84d';
+        ctx.fillRect(W / 2 - bw2 / 2, 42, bw2 * Math.max(0, boss.hp / boss.maxHp), 10);
+      }
+    }
+    // 배너
+    if (G.banner) {
+      const b = G.banner; b.t += 1 / 60;
+      if (b.t > 2.6) G.banner = null;
+      else {
+        ctx.globalAlpha = b.t < 0.2 ? b.t / 0.2 : b.t > 2.2 ? (2.6 - b.t) / 0.4 : 1;
+        ctx.textAlign = 'center'; ctx.font = 'bold 30px sans-serif';
+        ctx.fillStyle = '#ffd76d';
+        ctx.fillText(b.txt, W / 2, H * 0.32);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
   ctx.restore();
 }
 let lastTs = 0;
@@ -1039,10 +1364,19 @@ function startGame(charId) {
   newGame(charId);
   titleScreen.classList.add('hidden');
   overScreen.classList.add('hidden');
+  document.getElementById('screen-clear').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('bond-wrap').classList.remove('hidden');
   partnerBtn.classList.remove('hidden');
   updateWeaponsBar();
+}
+function victory() {
+  G.state = 'clear'; G.bossActive = false;
+  const m = Math.floor(G.time / 60), s = Math.floor(G.time % 60);
+  document.getElementById('clear-stats').innerHTML =
+    `생존 시간 <b>${m}:${String(s).padStart(2, '0')}</b><br>처치 <b>${G.kills}</b> · 레벨 <b>${G.player.lvl}</b> · Keepsake <b>${Object.keys(G.player.keepsakes).length}</b>`;
+  document.getElementById('screen-clear').classList.remove('hidden');
+  partnerBtn.classList.add('hidden');
 }
 function gameOver() {
   G.state = 'over';
@@ -1054,6 +1388,13 @@ function gameOver() {
 }
 document.getElementById('btn-retry').addEventListener('click', () => {
   overScreen.classList.add('hidden');
+  document.getElementById('hud').classList.add('hidden');
+  partnerBtn.classList.add('hidden');
+  titleScreen.classList.remove('hidden');
+  G = null;
+});
+document.getElementById('btn-clear-retry').addEventListener('click', () => {
+  document.getElementById('screen-clear').classList.add('hidden');
   document.getElementById('hud').classList.add('hidden');
   partnerBtn.classList.add('hidden');
   titleScreen.classList.remove('hidden');
