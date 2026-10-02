@@ -31,15 +31,15 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.6.0';
+const ASSET_V = 'v=0.6.1';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 토비 애니메이션 프레임
 for (let i = 0; i < 4; i++) loadSprite('tobi-walk-' + i, `assets/tobi-walk-${i}.png?` + ASSET_V);
 for (let i = 0; i < 3; i++) loadSprite('tobi-atk-' + i, `assets/tobi-atk-${i}.png?` + ASSET_V);
 const CHAR_ANIM = {
-  tobi: { walk: ['tobi-walk-0', 'tobi-walk-1', 'tobi-walk-2', 'tobi-walk-3'],
-          atk: ['tobi-atk-0', 'tobi-atk-1', 'tobi-atk-2'] },
+  tobi: { walk: [['tobi-walk-0', 0.786], ['tobi-walk-1', 0.725], ['tobi-walk-2', 0.733], ['tobi-walk-3', 0.746]],
+          atk: [['tobi-atk-0', 0.768], ['tobi-atk-1', 0.738], ['tobi-atk-2', 0.863]] },
   // lumi: 시트 오는 대로 추가
 };
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
@@ -1144,15 +1144,18 @@ function drawPlayer() {
   const anim = CHAR_ANIM[G.char];
   let sprKey = G.char, sw = 76, sh = 76;
   if (anim) {
+    sh = 104;
+    let asp;
     if (p.atkT > 0) {
       const f = Math.min(2, Math.floor((0.32 - p.atkT) / 0.32 * 3));
-      sprKey = anim.atk[f]; sw = 67; sh = 104;
+      [sprKey, asp] = anim.atk[f];
     } else if (p.moving) {
       const f = Math.floor(G.time * 9) % 4;
-      sprKey = anim.walk[f]; sw = 58; sh = 104;
+      [sprKey, asp] = anim.walk[f];
     } else {
-      sprKey = anim.walk[1]; sw = 58; sh = 104; // idle
+      [sprKey, asp] = anim.walk[1]; // idle
     }
+    sw = Math.round(sh * asp);
   }
   const pspr = sprFor(sprKey, sw, sh);
   ctx.save(); ctx.translate(p.x, p.y); ctx.scale(p.face, 1);
@@ -1171,11 +1174,13 @@ function drawPartner() {
   const anim = CHAR_ANIM[pt.char];
   let sprKey = pt.char, sw = 52, sh = 52;
   if (anim) {
+    sh = 72;
+    let asp;
     if (G.player.moving) {
       const f = Math.floor(G.time * 9) % 4;
-      sprKey = anim.walk[f];
-    } else sprKey = anim.walk[1];
-    sw = 40; sh = 72;
+      [sprKey, asp] = anim.walk[f];
+    } else [sprKey, asp] = anim.walk[1];
+    sw = Math.round(sh * asp);
   }
   const pspr = sprFor(sprKey, sw, sh);
   ctx.save(); ctx.translate(pt.x, pt.y); ctx.scale(G.player.face, 1);
