@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.9.1';
+const ASSET_V = 'v=0.9.2';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -78,7 +78,8 @@ function hash2(x, y) {
   return (h ^ (h >>> 16)) >>> 0;
 }
 // 돌무더기(막힘): 1000px 셀당 42% 확률, 스폰 지점(원점 반경 700px) 제외
-const ROCK_CELL = 1000, ROCK_R = 34;
+// 충돌은 발판 전체를 타원으로 막음 (뒤로 숨을 수 없음)
+const ROCK_CELL = 1000, ROCK_RX = 66, ROCK_RY = 38, ROCK_CY = -28;
 function rockInCell(cx, cy) {
   const h = hash2(cx, cy);
   if (h % 100 >= 42) return null;
@@ -97,12 +98,17 @@ function eachRockNear(x, y, r, cb) {
   }
 }
 function collideRocks(o, rad) {
-  eachRockNear(o.x, o.y, rad + ROCK_R + 2, (pl) => {
-    const dx = o.x - pl.x, dy = o.y - pl.y;
-    const d = Math.hypot(dx, dy), min = rad + ROCK_R;
-    if (d < min) {
-      if (d > 0.01) { o.x = pl.x + dx / d * min; o.y = pl.y + dy / d * min; }
-      else o.x = pl.x + min;
+  eachRockNear(o.x, o.y, rad + 72, (rk) => {
+    const cx = rk.x, cy = rk.y + ROCK_CY;
+    const rx = ROCK_RX + rad, ry = ROCK_RY + rad;
+    const dx = (o.x - cx) / rx, dy = (o.y - cy) / ry;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < 1) {
+      if (d2 > 0.0001) {
+        const d = Math.sqrt(d2);
+        o.x = cx + dx / d * rx;
+        o.y = cy + dy / d * ry;
+      } else { o.x = cx + rx; o.y = cy; }
     }
   });
 }
@@ -1422,16 +1428,16 @@ function updatePickups(dt) {
   }
 }
 function drawProps() {
-  const tcSpr = sprFor('prop-trashcan', 44, 45);
-  const bSpr = sprFor('prop-bench', 72, 56);
+  const tcSpr = sprFor('prop-trashcan', 46, 57);
+  const bSpr = sprFor('prop-bench', 72, 60);
   for (const pr of G.props) {
     const flash = pr.flash > 0;
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.beginPath(); ctx.ellipse(pr.x, pr.y + pr.r * 0.7, pr.r * 0.8, pr.r * 0.25, 0, 0, TAU); ctx.fill();
     if (pr.kind === 'trash') {
-      if (tcSpr) ctx.drawImage(tcSpr, pr.x - 22, pr.y - 40, 44, 45);
+      if (tcSpr) ctx.drawImage(tcSpr, pr.x - 23, pr.y - 50, 46, 57);
     } else {
-      if (bSpr) ctx.drawImage(bSpr, pr.x - 36, pr.y - 44, 72, 56);
+      if (bSpr) ctx.drawImage(bSpr, pr.x - 36, pr.y - 48, 72, 60);
     }
     if (flash) { // 피격 플래시
       ctx.globalAlpha = 0.5; ctx.fillStyle = '#fff';
