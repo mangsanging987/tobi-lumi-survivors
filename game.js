@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.5.0';
+const ASSET_V = 'v=0.5.1';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
@@ -993,20 +993,30 @@ function drawProjs() {
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pr.x, pr.y - 7); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pr.x + 5, pr.y + 2); ctx.stroke();
-    } else if (pr.kind === 'ball' || pr.kind === 'boom' || pr.kind === 'homer' || pr.kind === 'rally' || pr.kind === 'zapboom') {
-      const zap = pr.kind === 'zapboom';
+    } else if (pr.kind === 'ball' || pr.kind === 'homer' || pr.kind === 'rally') {
       const col = pr.kind === 'homer' ? '#ff9d5c' : pr.kind === 'rally' ? '#7dffd4' : '#d8ff5d';
-      ctx.globalAlpha = 0.25; ctx.fillStyle = zap ? '#ffe27d' : col;
+      ctx.globalAlpha = 0.25; ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r * 1.9, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.fillStyle = zap ? '#ffe27d' : col;
+      ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.fill();
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-      if (zap) {
-        ctx.beginPath(); ctx.moveTo(pr.x - 6, pr.y); ctx.lineTo(pr.x, pr.y - 8); ctx.lineTo(pr.x + 5, pr.y + 1); ctx.lineTo(pr.x - 1, pr.y + 8); ctx.stroke();
-      } else {
-        ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r - 3, 0.6, 2.4); ctx.stroke();
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r - 3, 0.6, 2.4); ctx.stroke();
+      if (pr.kind === 'homer') { // 야구공 실밥
+        ctx.strokeStyle = '#d43d2a';
+        ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r - 5, 2.2, 4.0); ctx.stroke();
       }
+    } else if (pr.kind === 'boom' || pr.kind === 'zapboom') { // 부메랑: 빙글빙글 회전
+      const zap = pr.kind === 'zapboom';
+      ctx.globalAlpha = 0.22; ctx.fillStyle = zap ? '#ffe27d' : '#e8a34d';
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r * 1.8, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(G.time * 14);
+      ctx.strokeStyle = zap ? '#ffe27d' : '#e8a34d'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, 0, 10, 0.4, Math.PI - 0.4); ctx.stroke();
+      ctx.strokeStyle = zap ? '#fff' : '#fff3d6'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, 10, 0.7, Math.PI - 0.7); ctx.stroke();
+      ctx.restore();
     } else if (pr.kind === 'wave2' || pr.kind === 'doom' || pr.kind === 'doommini') {
       const doom = pr.kind !== 'wave2';
       const col = doom ? '#c77dff' : '#7dd8ff';
