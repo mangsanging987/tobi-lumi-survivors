@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.7.1';
+const ASSET_V = 'v=0.7.2';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -52,7 +52,7 @@ loadSprite('enemy-elite-luggage', 'assets/enemy-elite-luggage.png?' + ASSET_V);
 loadSprite('enemy-elite-announce', 'assets/enemy-elite-announce.png?' + ASSET_V);
 loadSprite('enemy-boss-train', 'assets/enemy-boss-train.png?' + ASSET_V);
 const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella', can: 'enemy-can', paper: 'enemy-paper', pack: 'enemy-pack' };
-const ENEMY_DIMS = { ticket: [60, 60], glove: [56, 56], umb: [88, 46], can: [56, 56], paper: [64, 64], pack: [72, 72] };
+const ENEMY_DIMS = { ticket: [48, 48], glove: [46, 46], umb: [70, 37], can: [46, 46], paper: [52, 52], pack: [58, 58] };
 // 스프라이트 미리 축소 (모바일 성능) — 레티나 대응: DPR 배율로 미리 렌더
 const PREP = {};
 function sprFor(key, w, h) {
@@ -1142,7 +1142,7 @@ function drawPlayer() {
   const anim = CHAR_ANIM[G.char];
   let sprKey = G.char, sw = 76, sh = 76;
   if (anim) {
-    sh = 104;
+    sh = 88;
     const f = p.moving ? Math.floor(G.time * 10) % 6 : 2;
     let asp;
     [sprKey, asp] = anim.walk[f];
@@ -1165,7 +1165,7 @@ function drawPartner() {
   const anim = CHAR_ANIM[pt.char];
   let sprKey = pt.char, sw = 52, sh = 52;
   if (anim) {
-    sh = 72;
+    sh = 62;
     let asp;
     if (G.player.moving) {
       const f = Math.floor(G.time * 10) % 6;
