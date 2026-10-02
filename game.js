@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.5.1';
+const ASSET_V = 'v=0.5.2';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
@@ -46,14 +46,15 @@ loadSprite('enemy-elite-announce', 'assets/enemy-elite-announce.png?' + ASSET_V)
 loadSprite('enemy-boss-train', 'assets/enemy-boss-train.png?' + ASSET_V);
 const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella', can: 'enemy-can', paper: 'enemy-paper', pack: 'enemy-pack' };
 const ENEMY_DIMS = { ticket: [60, 60], glove: [56, 56], umb: [88, 46], can: [56, 56], paper: [64, 64], pack: [72, 72] };
-// 스프라이트 미리 축소 (모바일 성능)
+// 스프라이트 미리 축소 (모바일 성능) — 레티나 대응: DPR 배율로 미리 렌더
 const PREP = {};
 function sprFor(key, w, h) {
   const img = SPR[key];
   if (!img || !img.complete || !img.naturalWidth) return null;
   if (!PREP[key]) {
-    const c = document.createElement('canvas'); c.width = w; c.height = h;
-    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    const s = Math.min(DPR || 1, 2);
+    const c = document.createElement('canvas'); c.width = Math.ceil(w * s); c.height = Math.ceil(h * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     PREP[key] = c;
   }
   return PREP[key];
@@ -949,7 +950,7 @@ function drawBoss(e) {
   ctx.rotate(ang);
   const pulse = e.phase === 2 ? Math.sin(G.time * 10) * 0.015 : Math.sin(G.time * 4) * 0.008;
   ctx.scale(1 + pulse, 1 + pulse);
-  const BW = 240, BH = 222; // 시트 기본형 스프라이트
+  const BW = 224, BH = 216; // 시트 기본형 스프라이트
   if (flash) ctx.globalAlpha = 0.72;
   const bspr = sprFor('enemy-boss-train', BW, BH);
   if (bspr) ctx.drawImage(bspr, -BW / 2, -BH / 2 + 10, BW, BH);
