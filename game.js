@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.4.1';
+const ASSET_V = 'v=0.4.2';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
@@ -40,6 +40,9 @@ loadSprite('enemy-umbrella', 'assets/enemy-umbrella.png?' + ASSET_V);
 loadSprite('enemy-can', 'assets/enemy-can.png?' + ASSET_V);
 loadSprite('enemy-paper', 'assets/enemy-paper.png?' + ASSET_V);
 loadSprite('enemy-pack', 'assets/enemy-pack.png?' + ASSET_V);
+loadSprite('enemy-elite-inspector', 'assets/enemy-elite-inspector.png?' + ASSET_V);
+loadSprite('enemy-elite-luggage', 'assets/enemy-elite-luggage.png?' + ASSET_V);
+loadSprite('enemy-elite-announce', 'assets/enemy-elite-announce.png?' + ASSET_V);
 const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella', can: 'enemy-can', paper: 'enemy-paper', pack: 'enemy-pack' };
 const ENEMY_DIMS = { ticket: [60, 60], glove: [56, 56], umb: [88, 46], can: [56, 56], paper: [64, 64], pack: [72, 72] };
 // 스프라이트 미리 축소 (모바일 성능)
@@ -418,9 +421,9 @@ function setBanner(txt) { G.banner = { txt, t: 0 }; }
 
 // ============ Elite & Boss ============
 const ELITE_DEFS = {
-  ticket: { hp: 900, name: '거대 승차권' },
-  glove: { hp: 2200, name: '거대 장갑' },
-  umb: { hp: 3800, name: '거대 우산' },
+  ticket: { hp: 900, name: '티켓 검사관', spr: 'enemy-elite-inspector', dims: [110, 110], r: 28 },
+  glove: { hp: 2200, name: '잃어버린 수하물', spr: 'enemy-elite-luggage', dims: [120, 120], r: 32 },
+  umb: { hp: 3800, name: '고장난 안내방송', spr: 'enemy-elite-announce', dims: [116, 110], r: 30 },
 };
 function spawnMinion(type, x, y) {
   if (G.enemies.length > 90) return;
@@ -441,7 +444,7 @@ function spawnElite(kind) {
     type: kind, elite: true, ename: def.name,
     x: G.player.x + Math.cos(a) * d, y: G.player.y + Math.sin(a) * d,
     hp: def.hp * hpMul, maxHp: def.hp * hpMul,
-    spd: base.spd * 0.85, dmg: base.dmg * 2 * (1 + t / 320), xp: 0, r: base.r * 1.7,
+    spd: base.spd * 0.85, dmg: base.dmg * 2 * (1 + t / 320), xp: 0, r: def.r,
     vx: 0, vy: 0, flash: 0, slow: 0, frozen: 0, boneT: 0, dead: false,
     seed: rand(0, TAU), dashT: rand(0, 2), dashing: 0, tele: 0,
     patT: 2.5, warnT: 0, chargeA: 0, charging: 0,
@@ -685,7 +688,6 @@ function drawEnemy(e) {
   const wob = Math.sin(G.time * 4 + e.seed) * 0.08;
   const img = SPR[ENEMY_SPR[e.type]];
   const bob = e.type === 'umb' ? Math.sin(G.time * 2.2 + e.seed) * 3 : 0;
-  const sc = e.elite ? 1.7 : 1; // Elite는 크게
   ctx.save();
   ctx.translate(e.x, e.y);
   // 그림자
@@ -697,11 +699,16 @@ function drawEnemy(e) {
     ctx.beginPath(); ctx.ellipse(0, e.r * 0.7, e.r * 1.05, e.r * 0.4, 0, 0, TAU); ctx.stroke();
   }
   ctx.rotate(wob);
-  ctx.scale(sc, sc);
   if (e.frozen > 0) ctx.globalAlpha = 0.7;
-  const dims = ENEMY_DIMS[e.type] || [60, 60];
-  const spr = sprFor(ENEMY_SPR[e.type], dims[0], dims[1]);
-  if (spr) ctx.drawImage(spr, -dims[0] / 2, -dims[1] / 2 + bob, dims[0], dims[1]);
+  if (e.elite) {
+    const def = ELITE_DEFS[e.type], ed = def.dims;
+    const espr = sprFor(def.spr, ed[0], ed[1]);
+    if (espr) ctx.drawImage(espr, -ed[0] / 2, -ed[1] / 2 + bob, ed[0], ed[1]);
+  } else {
+    const dims = ENEMY_DIMS[e.type] || [60, 60];
+    const spr = sprFor(ENEMY_SPR[e.type], dims[0], dims[1]);
+    if (spr) ctx.drawImage(spr, -dims[0] / 2, -dims[1] / 2 + bob, dims[0], dims[1]);
+  }
   // 장갑 돌진 텔레그래프
   if (e.type === 'glove' && e.tele > 0) {
     ctx.globalAlpha = 0.22; ctx.fillStyle = '#ff3b3b';
