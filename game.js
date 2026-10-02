@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.8.1';
+const ASSET_V = 'v=0.9.0';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -53,6 +53,18 @@ loadSprite('enemy-elite-announce', 'assets/enemy-elite-announce.png?' + ASSET_V)
 loadSprite('enemy-boss-train', 'assets/enemy-boss-train.png?' + ASSET_V);
 const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella', can: 'enemy-can', paper: 'enemy-paper', pack: 'enemy-pack' };
 const ENEMY_DIMS = { ticket: [48, 48], glove: [46, 46], umb: [70, 37], can: [46, 46], paper: [52, 52], pack: [58, 58] };
+// 일반몹 걷기 애니메이션 (6프레임)
+for (const t of ['ticket', 'glove', 'umb', 'can', 'paper', 'pack'])
+  for (let i = 0; i < 6; i++) loadSprite(`enemy-${t}-walk-${i}`, `assets/enemy-${t}-walk-${i}.png?` + ASSET_V);
+const ENEMY_ANIM = {
+  ticket: [[0, 1.067], [1, 1.054], [2, 1.032], [3, 1.0], [4, 1.093], [5, 1.08]],
+  glove: [[0, 0.945], [1, 1.005], [2, 0.94], [3, 0.975], [4, 0.95], [5, 0.965]],
+  umb: [[0, 0.921], [1, 0.89], [2, 0.881], [3, 0.909], [4, 0.89], [5, 0.931]],
+  can: [[0, 0.91], [1, 0.914], [2, 0.906], [3, 0.97], [4, 1.0], [5, 0.965]],
+  paper: [[0, 0.975], [1, 1.035], [2, 0.965], [3, 0.985], [4, 1.04], [5, 1.01]],
+  pack: [[0, 0.944], [1, 0.975], [2, 0.96], [3, 0.995], [4, 0.985], [5, 1.07]],
+};
+const ENEMY_ANIM_H = { ticket: 48, glove: 46, umb: 56, can: 46, paper: 52, pack: 58 };
 loadSprite('bg-floor', 'assets/bg-floor.png?' + ASSET_V);
 loadSprite('bg-rock', 'assets/bg-rock.png?' + ASSET_V);
 loadSprite('prop-trashcan', 'assets/prop-trashcan.png?' + ASSET_V);
@@ -961,9 +973,7 @@ function hurtPlayer(dmg, ang) {
 // ============ Enemy Art (스프라이트) ============
 function drawEnemy(e) {
   if (e.isBoss) { drawBoss(e); return; }
-  const wob = Math.sin(G.time * 4 + e.seed) * 0.08;
   const img = SPR[ENEMY_SPR[e.type]];
-  const bob = e.type === 'umb' ? Math.sin(G.time * 2.2 + e.seed) * 3 : 0;
   ctx.save();
   ctx.translate(e.x, e.y);
   // 그림자
@@ -974,16 +984,19 @@ function drawEnemy(e) {
     ctx.lineWidth = e.warnT > 0 ? 5 : 3;
     ctx.beginPath(); ctx.ellipse(0, e.r * 0.7, e.r * 1.05, e.r * 0.4, 0, 0, TAU); ctx.stroke();
   }
-  ctx.rotate(wob);
   if (e.frozen > 0) ctx.globalAlpha = 0.7;
   if (e.elite) {
     const def = ELITE_DEFS[e.type], ed = def.dims;
     const espr = sprFor(def.spr, ed[0], ed[1]);
-    if (espr) ctx.drawImage(espr, -ed[0] / 2, -ed[1] / 2 + bob, ed[0], ed[1]);
+    if (espr) ctx.drawImage(espr, -ed[0] / 2, -ed[1] / 2, ed[0], ed[1]);
   } else {
-    const dims = ENEMY_DIMS[e.type] || [60, 60];
-    const spr = sprFor(ENEMY_SPR[e.type], dims[0], dims[1]);
-    if (spr) ctx.drawImage(spr, -dims[0] / 2, -dims[1] / 2 + bob, dims[0], dims[1]);
+    // 걷기 애니메이션 (6프레임, 8fps)
+    const anim = ENEMY_ANIM[e.type], h = ENEMY_ANIM_H[e.type] || 52;
+    const [fi, asp] = anim[Math.floor(G.time * 8 + e.seed) % 6];
+    const w = Math.round(h * asp);
+    const spr = sprFor(`enemy-${e.type}-walk-${fi}`, w, h);
+    if (spr) ctx.drawImage(spr, -w / 2, -h / 2, w, h);
+    else if (img && img.complete && img.naturalWidth) ctx.drawImage(img, -w / 2, -h / 2, w, h);
   }
   // 장갑 돌진 텔레그래프
   if (e.type === 'glove' && e.tele > 0) {
