@@ -375,7 +375,7 @@ function spawnEnemy(force) {
     type, x: G.player.x + Math.cos(a) * d, y: G.player.y + Math.sin(a) * d,
     hp: base.hp * hpMul, maxHp: base.hp * hpMul, spd: base.spd * rand(0.9, 1.1),
     dmg: base.dmg * dmgMul, xp: base.xp, r: base.r,
-    vx: 0, vy: 0, flash: 0, slow: 0, boneT: 0, dead: false,
+    vx: 0, vy: 0, flash: 0, slow: 0, frozen: 0, boneT: 0, dead: false,
     seed: rand(0, TAU), dashT: rand(0, 2), dashing: 0, tele: 0,
   });
 }
