@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.9.0';
+const ASSET_V = 'v=0.9.1';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -64,7 +64,7 @@ const ENEMY_ANIM = {
   paper: [[0, 0.975], [1, 1.035], [2, 0.965], [3, 0.985], [4, 1.04], [5, 1.01]],
   pack: [[0, 0.944], [1, 0.975], [2, 0.96], [3, 0.995], [4, 0.985], [5, 1.07]],
 };
-const ENEMY_ANIM_H = { ticket: 48, glove: 46, umb: 56, can: 46, paper: 52, pack: 58 };
+const ENEMY_ANIM_H = { ticket: 31, glove: 30, umb: 36, can: 30, paper: 34, pack: 38 };
 loadSprite('bg-floor', 'assets/bg-floor.png?' + ASSET_V);
 loadSprite('bg-rock', 'assets/bg-rock.png?' + ASSET_V);
 loadSprite('prop-trashcan', 'assets/prop-trashcan.png?' + ASSET_V);
@@ -169,16 +169,16 @@ const WEAPONS = {
   star:     { name: '별똥별',    icon: '🌠', max: 5, desc: '가장 가까운 적 추적' },
   clockbomb:{ name: '시계탑 폭발', icon: '💥', max: 5, desc: '주기적 광역 폭발+슬로우' },
   // ---- 진화 무기 (레벨업 진화로만 획득, max 1) ----
-  clawstorm:   { name: '폭풍 할퀴기', icon: '🌪️', max: 1, evo: true, desc: '3연속 베기, 범위 대폭 증가' },
-  steelfoot:   { name: '강철 발톱',  icon: '🦾', max: 1, evo: true, desc: '3연속 베기 + 적중 시 짧은 기절' },
-  eternalclock:{ name: '영원의 시계', icon: '⏳', max: 1, evo: true, desc: '나갔다 돌아오는 왕복 파동' },
-  homerun:     { name: '홈런볼',     icon: '⚾', max: 1, evo: true, ball: true, desc: '초고속 관통 강속구' },
-  lightningfetch:{ name: '번개 페치', icon: '⚡', max: 1, evo: true, ball: true, desc: '초고속 왕복 + 궤적에 번개 피해' },
-  satbone:     { name: '위성 뼈다귀', icon: '🛰️', max: 1, evo: true, desc: '3개의 뼈다귀, 넓은 궤도' },
-  meteorshower:{ name: '유성우',     icon: '☄️', max: 1, evo: true, desc: '추적탄 9연발 동시 발사' },
-  guardbell:   { name: '수호의 종',  icon: '🔔', max: 1, evo: true, desc: '광역 폭발 + 방어 필드 생성' },
-  infinityrally:{ name: '무한 랠리', icon: '🔁', max: 1, evo: true, ball: true, desc: '튈수록 강해지고 반드시 돌아옴' },
-  doomsday:    { name: '종말의 시계', icon: '⏰', max: 1, evo: true, desc: '파동 적중 시 폭발, 연쇄 반응' },
+  clawstorm:   { name: '폭풍 할퀴기', icon: '🌪️', max: 5, evo: true, desc: '3연속 베기, 범위 대폭 증가' },
+  steelfoot:   { name: '강철 발톱',  icon: '🦾', max: 5, evo: true, desc: '3연속 베기 + 적중 시 짧은 기절' },
+  eternalclock:{ name: '영원의 시계', icon: '⏳', max: 5, evo: true, desc: '나갔다 돌아오는 왕복 파동' },
+  homerun:     { name: '홈런볼',     icon: '⚾', max: 5, evo: true, ball: true, desc: '초고속 관통 강속구' },
+  lightningfetch:{ name: '번개 페치', icon: '⚡', max: 5, evo: true, ball: true, desc: '초고속 왕복 + 궤적에 번개 피해' },
+  satbone:     { name: '위성 뼈다귀', icon: '🛰️', max: 5, evo: true, desc: '3개의 뼈다귀, 넓은 궤도' },
+  meteorshower:{ name: '유성우',     icon: '☄️', max: 5, evo: true, desc: '추적탄 9연발 동시 발사' },
+  guardbell:   { name: '수호의 종',  icon: '🔔', max: 5, evo: true, desc: '광역 폭발 + 방어 필드 생성' },
+  infinityrally:{ name: '무한 랠리', icon: '🔁', max: 5, evo: true, ball: true, desc: '튈수록 강해지고 반드시 돌아옴' },
+  doomsday:    { name: '종말의 시계', icon: '⏰', max: 5, evo: true, desc: '파동 적중 시 폭발, 연쇄 반응' },
 };
 const EVOS = {
   clawstorm:    { needs: { weapon: 'claw', passive: 'meat' } },
@@ -233,6 +233,7 @@ function newGame(charId) {
       x: 0, y: 0, hp: c.hp, maxHp: c.hp, speed: c.speed,
       lvl: 1, xp: 0, xpNeed: xpFor(1), r: 22,
       weapons: [{ id: c.weapon, lvl: 1, t: 0, ang: 0 }],
+      consumed: [], // 진화에 소모된 무기 (다시 획득 가능)
       passives: {}, keepsakes: {}, scarfCd: 0, face: 1, invuln: 0, atkAng: 0,
       rewindUsed: false, snaps: [], snapT: 0, moving: false,
     },
@@ -704,10 +705,17 @@ function setBanner(txt) { G.banner = { txt, t: 0 }; }
 
 // ============ Elite & Boss ============
 const ELITE_DEFS = {
-  ticket: { hp: 900, name: '티켓 검사관', spr: 'enemy-elite-inspector', dims: [110, 110], r: 28 },
-  glove: { hp: 2200, name: '잃어버린 수하물', spr: 'enemy-elite-luggage', dims: [120, 120], r: 32 },
-  umb: { hp: 3800, name: '고장난 안내방송', spr: 'enemy-elite-announce', dims: [116, 110], r: 30 },
+  ticket: { hp: 900, name: '티켓 검사관', spr: 'enemy-elite-inspector', dims: [110, 110], r: 28,
+    walk: [['elite-ticket-0', 1.031], ['elite-ticket-1', 0.995], ['elite-ticket-2', 1.031], ['elite-ticket-3', 0.995], ['elite-ticket-4', 1.026], ['elite-ticket-5', 1.046]] },
+  glove: { hp: 2200, name: '잃어버린 수하물', spr: 'enemy-elite-luggage', dims: [120, 120], r: 32,
+    walk: [['elite-glove-0', 0.975], ['elite-glove-1', 0.96], ['elite-glove-2', 1.005], ['elite-glove-3', 0.995], ['elite-glove-4', 0.995], ['elite-glove-5', 1.042]] },
+  umb: { hp: 3800, name: '고장난 안내방송', spr: 'enemy-elite-announce', dims: [116, 110], r: 30,
+    walk: [['elite-umb-0', 0.936], ['elite-umb-1', 0.936], ['elite-umb-2', 0.926], ['elite-umb-3', 0.975], ['elite-umb-4', 0.985], ['elite-umb-5', 0.995]] },
 };
+for (const t of ['ticket', 'glove', 'umb'])
+  for (let i = 0; i < 6; i++) loadSprite(`elite-${t}-${i}`, `assets/elite-${t}-${i}.png?` + ASSET_V);
+for (let i = 0; i < 6; i++) loadSprite('boss-walk-' + i, `assets/boss-walk-${i}.png?` + ASSET_V);
+const BOSS_WALK = [['boss-walk-0', 1.091], ['boss-walk-1', 1.053], ['boss-walk-2', 1.031], ['boss-walk-3', 1.089], ['boss-walk-4', 1.036], ['boss-walk-5', 0.995]];
 function spawnMinion(type, x, y) {
   if (G.enemies.length > 90) return;
   const base = ENEMY_TYPES[type], t = G.time;
@@ -987,8 +995,15 @@ function drawEnemy(e) {
   if (e.frozen > 0) ctx.globalAlpha = 0.7;
   if (e.elite) {
     const def = ELITE_DEFS[e.type], ed = def.dims;
-    const espr = sprFor(def.spr, ed[0], ed[1]);
-    if (espr) ctx.drawImage(espr, -ed[0] / 2, -ed[1] / 2, ed[0], ed[1]);
+    // 엘리트 걷기 애니메이션 (6프레임, 6fps)
+    const [wkey, wasp] = def.walk[Math.floor(G.time * 6 + e.seed) % 6];
+    const ww = Math.round(ed[1] * wasp);
+    const espr = sprFor(wkey, ww, ed[1]);
+    if (espr) ctx.drawImage(espr, -ww / 2, -ed[1] / 2, ww, ed[1]);
+    else {
+      const fspr = sprFor(def.spr, ed[0], ed[1]);
+      if (fspr) ctx.drawImage(fspr, -ed[0] / 2, -ed[1] / 2, ed[0], ed[1]);
+    }
   } else {
     // 걷기 애니메이션 (6프레임, 8fps)
     const anim = ENEMY_ANIM[e.type], h = ENEMY_ANIM_H[e.type] || 52;
@@ -1048,10 +1063,16 @@ function drawBoss(e) {
   ctx.rotate(ang);
   const pulse = e.phase === 2 ? Math.sin(G.time * 10) * 0.015 : Math.sin(G.time * 4) * 0.008;
   ctx.scale(1 + pulse, 1 + pulse);
-  const BW = 224, BH = 216; // 시트 기본형 스프라이트
+  const BW = 224, BH = 216; // 보스 걷기 애니메이션 (6프레임, 6fps)
   if (flash) ctx.globalAlpha = 0.72;
-  const bspr = sprFor('enemy-boss-train', BW, BH);
-  if (bspr) ctx.drawImage(bspr, -BW / 2, -BH / 2 + 10, BW, BH);
+  const [bkey, basp] = BOSS_WALK[Math.floor(G.time * 6) % 6];
+  const bw2 = Math.round(BH * basp);
+  const bspr = sprFor(bkey, bw2, BH);
+  if (bspr) ctx.drawImage(bspr, -bw2 / 2, -BH / 2 + 10, bw2, BH);
+  else {
+    const ospr = sprFor('enemy-boss-train', BW, BH);
+    if (ospr) ctx.drawImage(ospr, -BW / 2, -BH / 2 + 10, BW, BH);
+  }
   // Phase 2 붉은 기운
   if (e.phase === 2) {
     ctx.globalAlpha = 0.12 + 0.07 * Math.sin(G.time * 10);
@@ -1233,7 +1254,7 @@ function drawPlayer() {
   const anim = CHAR_ANIM[G.char];
   let sprKey = G.char, sw = 76, sh = 76;
   if (anim) {
-    sh = 88;
+    sh = 72;
     const f = p.moving ? Math.floor(G.time * 10) % 6 : 2;
     let asp;
     [sprKey, asp] = anim.walk[f];
@@ -1531,6 +1552,10 @@ function openLevelUp() {
     const l = p.passives[id] || 0;
     if (l < PASSIVES[id].max && (l > 0 || pCount < MAX_PASSIVES)) pool.push({ t: 'passive', id });
   }
+  // 진화에 소모된 무기는 슬롯이 가득 차도 다시 획득 가능
+  for (const id of (p.consumed || [])) {
+    if (!p.weapons.find(w => w.id === id)) pool.push({ t: 'new', id });
+  }
   for (let i = pool.length - 1; i > 0; i--) { const j = randInt(0, i);[pool[i], pool[j]] = [pool[j], pool[i]]; }
   // 진화 후보는 확정 등장 (여러 개면 직접 고름)
   const picks = evoCandidates().map(id => ({ t: 'evo', id })).concat(pool).slice(0, 3);
@@ -1554,17 +1579,21 @@ function openLevelUp() {
 }
 function applyChoice(c) {
   const p = G.player;
-  if (c.t === 'new') p.weapons.push({ id: c.id, lvl: 1, t: 0.3, ang: rand(0, TAU) });
+  if (c.t === 'new') {
+    p.weapons.push({ id: c.id, lvl: 1, t: 0.3, ang: rand(0, TAU) });
+    if (p.consumed) p.consumed = p.consumed.filter(id => id !== c.id);
+  }
   else if (c.t === 'up') p.weapons.find(w => w.id === c.id).lvl++;
   else if (c.t === 'passive') {
     p.passives[c.id] = (p.passives[c.id] || 0) + 1;
     if (c.id === 'paw') { p.maxHp += 10; p.hp = Math.min(p.maxHp, p.hp + 10); }
   }
   else if (c.t === 'heal') p.hp = Math.min(p.maxHp, p.hp + 30);
-  else if (c.t === 'evo') { // 진화: 재료 무기 제거 → 진화 무기 장착
+  else if (c.t === 'evo') { // 진화: 재료 무기 제거 → 진화 무기 Lv1 장착 (다시 강화)
     const consumed = EVOS[c.id].needs.weapons || [EVOS[c.id].needs.weapon];
     p.weapons = p.weapons.filter(w => !consumed.includes(w.id));
-    p.weapons.push({ id: c.id, lvl: 5, t: 0.3, ang: rand(0, TAU) });
+    for (const id of consumed) if (!p.consumed.includes(id)) p.consumed.push(id);
+    p.weapons.push({ id: c.id, lvl: 1, t: 0.3, ang: rand(0, TAU) });
     setBanner(`✨ ${WEAPONS[c.id].name} 진화!`);
   }
   lvScreen.classList.add('hidden');
