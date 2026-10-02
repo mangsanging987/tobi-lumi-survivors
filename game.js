@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.10.1';
+const ASSET_V = 'v=0.10.2';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -1414,9 +1414,6 @@ function drawZones() {
         ctx.arc(bx, by, b.r, 0, TAU);
       }
       ctx.fill();
-      ctx.globalAlpha = 0.55 * fade;
-      ctx.strokeStyle = '#d8b4fe'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(z.x, z.y, z.r * 0.92, 0, TAU); ctx.stroke();
       // 기포
       ctx.globalAlpha = 0.5 * fade;
       ctx.fillStyle = '#e9d5ff';
