@@ -31,9 +31,17 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.5.2';
+const ASSET_V = 'v=0.6.0';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
+// 토비 애니메이션 프레임
+for (let i = 0; i < 4; i++) loadSprite('tobi-walk-' + i, `assets/tobi-walk-${i}.png?` + ASSET_V);
+for (let i = 0; i < 3; i++) loadSprite('tobi-atk-' + i, `assets/tobi-atk-${i}.png?` + ASSET_V);
+const CHAR_ANIM = {
+  tobi: { walk: ['tobi-walk-0', 'tobi-walk-1', 'tobi-walk-2', 'tobi-walk-3'],
+          atk: ['tobi-atk-0', 'tobi-atk-1', 'tobi-atk-2'] },
+  // lumi: 시트 오는 대로 추가
+};
 loadSprite('enemy-ticket', 'assets/enemy-ticket.png?' + ASSET_V);
 loadSprite('enemy-glove', 'assets/enemy-glove.png?' + ASSET_V);
 loadSprite('enemy-umbrella', 'assets/enemy-umbrella.png?' + ASSET_V);
@@ -139,7 +147,7 @@ function newGame(charId) {
       lvl: 1, xp: 0, xpNeed: xpFor(1), r: 22,
       weapons: [{ id: c.weapon, lvl: 1, t: 0, ang: 0 }],
       passives: {}, keepsakes: {}, scarfCd: 0, face: 1, invuln: 0, atkAng: 0,
-      rewindUsed: false, snaps: [], snapT: 0,
+      rewindUsed: false, snaps: [], snapT: 0, atkT: 0, moving: false,
     },
     partner: { x: -40, y: 30, bond: 0, char: charId === 'tobi' ? 'lumi' : 'tobi' },
     enemies: [], projs: [], gems: [], parts: [], floats: [],
@@ -262,6 +270,7 @@ function wDmg(base, w) {
 }
 function fireWeapon(w) {
   const p = G.player;
+  p.atkT = 0.32; // 공격 모션 재생
   const tgt = nearestEnemy(p.x, p.y, 700);
   const dir = tgt ? angTo(p.x, p.y, tgt.x, tgt.y) : (p.face > 0 ? 0 : Math.PI);
   p.atkAng = dir;
@@ -1131,9 +1140,23 @@ function drawPlayer() {
   if (p.invuln > 0 && Math.floor(G.time * 14) % 2 === 0) return; // 무적 깜빡임
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.beginPath(); ctx.ellipse(p.x, p.y + 30, 24, 8, 0, 0, TAU); ctx.fill();
-  const pspr = sprFor(G.char, 76, 76);
+  // 애니메이션 상태: 공격 > 걷기 > idle
+  const anim = CHAR_ANIM[G.char];
+  let sprKey = G.char, sw = 76, sh = 76;
+  if (anim) {
+    if (p.atkT > 0) {
+      const f = Math.min(2, Math.floor((0.32 - p.atkT) / 0.32 * 3));
+      sprKey = anim.atk[f]; sw = 67; sh = 104;
+    } else if (p.moving) {
+      const f = Math.floor(G.time * 9) % 4;
+      sprKey = anim.walk[f]; sw = 58; sh = 104;
+    } else {
+      sprKey = anim.walk[1]; sw = 58; sh = 104; // idle
+    }
+  }
+  const pspr = sprFor(sprKey, sw, sh);
   ctx.save(); ctx.translate(p.x, p.y); ctx.scale(p.face, 1);
-  if (pspr) ctx.drawImage(pspr, -38, -38, 76, 76);
+  if (pspr) ctx.drawImage(pspr, -sw / 2, -sh / 2, sw, sh);
   else { ctx.fillStyle = G.char === 'tobi' ? '#c98a4b' : '#e8e2f2'; ctx.beginPath(); ctx.arc(0, -6, 26, 0, TAU); ctx.fill(); }
   ctx.restore();
   // HP 바
@@ -1142,12 +1165,22 @@ function drawPlayer() {
 }
 function drawPartner() {
   const pt = G.partner;
-  const bob = Math.sin(G.time * 5) * 3;
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath(); ctx.ellipse(pt.x, pt.y + 22, 16, 5, 0, 0, TAU); ctx.fill();
-  const pspr = sprFor(pt.char, 52, 52);
-  if (pspr) ctx.drawImage(pspr, pt.x - 26, pt.y - 26 + bob, 52, 52);
+  const anim = CHAR_ANIM[pt.char];
+  let sprKey = pt.char, sw = 52, sh = 52;
+  if (anim) {
+    if (G.player.moving) {
+      const f = Math.floor(G.time * 9) % 4;
+      sprKey = anim.walk[f];
+    } else sprKey = anim.walk[1];
+    sw = 40; sh = 72;
+  }
+  const pspr = sprFor(sprKey, sw, sh);
+  ctx.save(); ctx.translate(pt.x, pt.y); ctx.scale(G.player.face, 1);
+  if (pspr) ctx.drawImage(pspr, -sw / 2, -sh / 2, sw, sh);
+  ctx.restore();
   ctx.globalAlpha = 1;
 }
 
@@ -1501,6 +1534,8 @@ function update(dt) {
   const sp = p.speed * spdMul();
   p.x += iv.x * sp * dt; p.y += iv.y * sp * dt;
   if (iv.x !== 0) p.face = iv.x > 0 ? 1 : -1;
+  p.moving = !!(iv.x || iv.y);
+  if (p.atkT > 0) p.atkT -= dt;
   if (iv.x || iv.y) p.atkAng = Math.atan2(iv.y, iv.x);
   if (p.invuln > 0) p.invuln -= dt;
   // 되감기 스냅샷 (0.5초마다, 3초 보관)
