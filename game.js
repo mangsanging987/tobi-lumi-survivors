@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.7.2';
+const ASSET_V = 'v=0.8.0';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -53,6 +53,80 @@ loadSprite('enemy-elite-announce', 'assets/enemy-elite-announce.png?' + ASSET_V)
 loadSprite('enemy-boss-train', 'assets/enemy-boss-train.png?' + ASSET_V);
 const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella', can: 'enemy-can', paper: 'enemy-paper', pack: 'enemy-pack' };
 const ENEMY_DIMS = { ticket: [48, 48], glove: [46, 46], umb: [70, 37], can: [46, 46], paper: [52, 52], pack: [58, 58] };
+loadSprite('bg-floor', 'assets/bg-floor.png?' + ASSET_V);
+loadSprite('bg-pillar', 'assets/bg-pillar.png?' + ASSET_V);
+loadSprite('bg-trash', 'assets/bg-trash.png?' + ASSET_V);
+
+// ============ 배경: 황폐한 지하철역 ============
+function hash2(x, y) {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+// 기둥(막힘): 1000px 셀당 42% 확률, 스폰 지점(원점 반경 700px) 제외
+const PILLAR_CELL = 1000, PILLAR_R = 26;
+function pillarInCell(cx, cy) {
+  const h = hash2(cx, cy);
+  if (h % 100 >= 42) return null;
+  const jx = (hash2(cx, 7 - cy) % 640) - 320;
+  const jy = (hash2(3 - cx, cy) % 640) - 320;
+  const x = cx * PILLAR_CELL + 500 + jx, y = cy * PILLAR_CELL + 500 + jy;
+  if (x * x + y * y < 700 * 700) return null;
+  return { x, y };
+}
+function eachPillarNear(x, y, r, cb) {
+  const x0 = Math.floor((x - r) / PILLAR_CELL), x1 = Math.floor((x + r) / PILLAR_CELL);
+  const y0 = Math.floor((y - r) / PILLAR_CELL), y1 = Math.floor((y + r) / PILLAR_CELL);
+  for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
+    const pl = pillarInCell(cx, cy);
+    if (pl) cb(pl);
+  }
+}
+function collidePillars(o, rad) {
+  eachPillarNear(o.x, o.y, rad + PILLAR_R + 2, (pl) => {
+    const dx = o.x - pl.x, dy = o.y - pl.y;
+    const d = Math.hypot(dx, dy), min = rad + PILLAR_R;
+    if (d < min) {
+      if (d > 0.01) { o.x = pl.x + dx / d * min; o.y = pl.y + dy / d * min; }
+      else o.x = pl.x + min;
+    }
+  });
+}
+// 쓰레기 장식(막히지 않음): 420px 셀당 55% 확률
+const TRASH_CELL = 420;
+function trashInCell(cx, cy) {
+  const h = hash2(cx + 131, cy - 57);
+  if (h % 100 >= 55) return null;
+  const jx = (hash2(cx, cy + 911) % 300) - 150;
+  const jy = (hash2(cx - 313, cy) % 300) - 150;
+  return {
+    x: cx * TRASH_CELL + 210 + jx, y: cy * TRASH_CELL + 210 + jy,
+    rot: (h % 628) / 100, s: 0.7 + (h % 60) / 100,
+  };
+}
+function drawPillar(pl) {
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath(); ctx.ellipse(pl.x, pl.y + 5, 42, 13, 0, 0, TAU); ctx.fill();
+  const spr = sprFor('bg-pillar', 64, 268);
+  if (spr) ctx.drawImage(spr, pl.x - 32, pl.y - 263, 64, 268);
+}
+function drawTrashLayer(cx, cy) {
+  const x0 = Math.floor(cx / TRASH_CELL), x1 = Math.floor((cx + W) / TRASH_CELL);
+  const y0 = Math.floor(cy / TRASH_CELL), y1 = Math.floor((cy + H) / TRASH_CELL);
+  const spr = sprFor('bg-trash', 96, 89);
+  if (!spr) return;
+  for (let tx = x0; tx <= x1; tx++) for (let ty = y0; ty <= y1; ty++) {
+    const t = trashInCell(tx, ty);
+    if (!t) continue;
+    const s = 96 * t.s;
+    ctx.save();
+    ctx.translate(t.x, t.y); ctx.rotate(t.rot);
+    ctx.globalAlpha = 0.92;
+    ctx.drawImage(spr, -s / 2, -s / 2, s, s * 0.927);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
 // 스프라이트 미리 축소 (모바일 성능) — 레티나 대응: DPR 배율로 미리 렌더
 const PREP = {};
 function sprFor(key, w, h) {
@@ -239,18 +313,15 @@ function inputVec() {
 // ============ Background (지하철 밤) ============
 // drawBG: 월드 좌표계에서 호출, (wx,wy)=화면 좌상단의 월드 좌표
 function drawBG(wx, wy) {
-  ctx.strokeStyle = 'rgba(120,110,180,0.10)'; ctx.lineWidth = 1;
-  const tile = 140;
-  const ox = wx - (((wx % tile) + tile) % tile);
-  const oy = wy - (((wy % tile) + tile) % tile);
-  ctx.beginPath();
-  for (let x = ox; x < wx + W; x += tile) { ctx.moveTo(x, wy); ctx.lineTo(x, wy + H); }
-  for (let y = oy; y < wy + H; y += tile) { ctx.moveTo(wx, y); ctx.lineTo(wx + W, y); }
-  ctx.stroke();
-  // 승강장 안전선 (월드 Y 기준 400px 간격)
-  const off = (((wy % 400) + 400) % 400);
-  ctx.fillStyle = 'rgba(255,200,90,0.10)';
-  for (let y = wy - off; y < wy + H; y += 400) ctx.fillRect(wx, y, W, 6);
+  // 황폐한 지하철역 바닥 타일
+  const T = 512;
+  const spr = sprFor('bg-floor', T, T);
+  if (!spr) return;
+  const ox = wx - (((wx % T) + T) % T);
+  const oy = wy - (((wy % T) + T) % T);
+  for (let x = ox; x < wx + W; x += T)
+    for (let y = oy; y < wy + H; y += T)
+      ctx.drawImage(spr, x, y, T, T);
 }
 
 // ============ Weapons ============
@@ -633,6 +704,8 @@ function spawnMinion(type, x, y) {
     vx: 0, vy: 0, flash: 0, slow: 0, frozen: 0, boneT: 0, dead: false,
     seed: rand(0, TAU), dashT: rand(0, 2), dashing: 0, tele: 0,
   });
+  const ne = G.enemies[G.enemies.length - 1];
+  collidePillars(ne, ne.r); // 기둥 안에 스폰되면 밖으로
 }
 function spawnElite(kind) {
   const base = ENEMY_TYPES[kind], def = ELITE_DEFS[kind];
@@ -768,6 +841,8 @@ function spawnEnemy(force) {
     vx: 0, vy: 0, flash: 0, slow: 0, frozen: 0, boneT: 0, dead: false,
     seed: rand(0, TAU), dashT: rand(0, 2), dashing: 0, tele: 0,
   });
+  const ne = G.enemies[G.enemies.length - 1];
+  collidePillars(ne, ne.r); // 기둥 안에 스폰되면 밖으로
 }
 function damageEnemy(e, dmg, kx, ky) {
   if (e.dead) return;
@@ -799,6 +874,7 @@ function updateEnemies(dt) {
     if (e.frozen > 0) { e.frozen -= dt; continue; } // 시간 정지 중
     if (e.flash > 0) e.flash -= dt;
     if (e.slow > 0) e.slow -= dt;
+    collidePillars(e, e.r); // 기둥 충돌
     if (e.isBoss) { updateBoss(e, dt); e.vx *= 0.86; e.vy *= 0.86; continue; }
     if (e.elite) { updateElite(e, dt * (e.slow > 0 ? 0.45 : 1)); e.vx *= 0.86; e.vy *= 0.86; continue; }
     const spMul = e.slow > 0 ? 0.45 : 1;
@@ -1396,6 +1472,7 @@ function updatePartner(dt) {
   const tx = p.x - p.face * 52, ty = p.y + 26;
   pt.x += (tx - pt.x) * Math.min(1, 5 * dt);
   pt.y += (ty - pt.y) * Math.min(1, 5 * dt);
+  collidePillars(pt, 16);
   pt.bond = Math.min(100, pt.bond + 1.1 * dt);
   partnerBtn.classList.toggle('ready', pt.bond >= 100);
 }
@@ -1529,6 +1606,7 @@ function update(dt) {
   const iv = inputVec();
   const sp = p.speed * spdMul();
   p.x += iv.x * sp * dt; p.y += iv.y * sp * dt;
+  collidePillars(p, p.r); // 기둥 충돌
   if (iv.x !== 0) p.face = iv.x > 0 ? 1 : -1;
   p.moving = !!(iv.x || iv.y);
   if (iv.x || iv.y) p.atkAng = Math.atan2(iv.y, iv.x);
@@ -1595,11 +1673,19 @@ function render() {
     drawGems();
     drawPickups();
     drawProps();
-    const sorted = [...G.enemies].sort((a, b) => a.y - b.y);
-    for (const e of sorted) drawEnemy(e);
+    drawTrashLayer(cx, cy);
+    // y-정렬: 기둥 + 적 + 파트너 + 플레이어 (기둥 뒤로 가면 가려짐)
+    const draws = [];
+    eachPillarNear(cx + W / 2, cy + H / 2, Math.max(W, H) / 2 + 320, (pl) => {
+      if (pl.x > cx - 80 && pl.x < cx + W + 80 && pl.y > cy - 300 && pl.y < cy + H + 80)
+        draws.push({ y: pl.y, f: () => drawPillar(pl) });
+    });
+    for (const e of G.enemies) draws.push({ y: e.y, f: () => drawEnemy(e) });
+    draws.push({ y: G.partner.y, f: drawPartner });
+    draws.push({ y: G.player.y, f: drawPlayer });
+    draws.sort((a, b) => a.y - b.y);
+    for (const d of draws) d.f();
     drawProjs(); drawZones();
-    drawPartner();
-    drawPlayer();
     drawParts(1 / 60); drawFloats(1 / 60);
   }
   ctx.restore();
@@ -1608,6 +1694,12 @@ function render() {
   const v = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
   v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
   ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  // 형광등 깜빡임 (은은하게)
+  if (G && G.state === 'play') {
+    const fl = Math.sin(G.time * 11.3) * Math.sin(G.time * 5.7 + 1.3) * Math.sin(G.time * 2.9 + 4.1);
+    if (fl > 0.86) { ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(0, 0, W, H); }
+    else if (fl < -0.94) { ctx.fillStyle = 'rgba(0,0,0,0.10)'; ctx.fillRect(0, 0, W, H); }
+  }
   if (G) {
     // 보스 HP바
     if (G.bossActive) {
