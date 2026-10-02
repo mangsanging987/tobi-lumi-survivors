@@ -4,12 +4,13 @@
 // ============ Setup ============
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-let W = 0, H = 0, DPR = 1;
+let W = 0, H = 0, DPR = 1, bgGrad = null, vigGrad = null;
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth; H = window.innerHeight;
   canvas.width = W * DPR; canvas.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  bgGrad = null; vigGrad = null; // 재생성
 }
 window.addEventListener('resize', resize); resize();
 
@@ -37,6 +38,18 @@ loadSprite('enemy-ticket', 'assets/enemy-ticket.png');
 loadSprite('enemy-glove', 'assets/enemy-glove.png');
 loadSprite('enemy-umbrella', 'assets/enemy-umbrella.png');
 const ENEMY_SPR = { ticket: 'enemy-ticket', glove: 'enemy-glove', umb: 'enemy-umbrella' };
+// 스프라이트 미리 축소 (모바일 성능)
+const PREP = {};
+function sprFor(key, w, h) {
+  const img = SPR[key];
+  if (!img || !img.complete || !img.naturalWidth) return null;
+  if (!PREP[key]) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    PREP[key] = c;
+  }
+  return PREP[key];
+}
 
 // ============ Data ============
 const CHARS = {
@@ -165,9 +178,13 @@ function inputVec() {
 
 // ============ Background (지하철 밤) ============
 function drawBG(px, py, t) {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#141126'); g.addColorStop(0.6, '#0e0c1c'); g.addColorStop(1, '#0a0916');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (!bgGrad) {
+    bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, '#141126'); bgGrad.addColorStop(0.6, '#0e0c1c'); bgGrad.addColorStop(1, '#0a0916');
+    vigGrad = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
+    vigGrad.addColorStop(0, 'rgba(0,0,0,0)'); vigGrad.addColorStop(1, 'rgba(0,0,0,0.55)');
+  }
+  ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
   // 바닥 타일
   ctx.strokeStyle = 'rgba(120,110,180,0.10)'; ctx.lineWidth = 1;
   const tile = 140;
@@ -184,9 +201,7 @@ function drawBG(px, py, t) {
     ctx.fillStyle = 'rgba(255,200,90,0.10)'; ctx.fillRect(0, y, W, 6);
   }
   // 비네팅
-  const v = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
-  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = vigGrad; ctx.fillRect(0, 0, W, H);
 }
 
 // ============ Weapons ============
@@ -470,11 +485,9 @@ function drawEnemy(e) {
   ctx.beginPath(); ctx.ellipse(0, e.r * 0.9, e.r * 0.9, e.r * 0.3, 0, 0, TAU); ctx.fill();
   ctx.rotate(wob);
   if (e.frozen > 0) ctx.globalAlpha = 0.7;
-  if (img && img.complete && img.naturalWidth) {
-    if (e.type === 'umb') ctx.drawImage(img, -44, -23 + bob, 88, 46);
-    else if (e.type === 'glove') ctx.drawImage(img, -28, -28 + bob, 56, 56);
-    else ctx.drawImage(img, -30, -30 + bob, 60, 60);
-  }
+  const dims = e.type === 'umb' ? [88, 46] : e.type === 'glove' ? [56, 56] : [60, 60];
+  const spr = sprFor(ENEMY_SPR[e.type], dims[0], dims[1]);
+  if (spr) ctx.drawImage(spr, -dims[0] / 2, -dims[1] / 2 + bob, dims[0], dims[1]);
   // 장갑 돌진 텔레그래프
   if (e.type === 'glove' && e.tele > 0) {
     ctx.globalAlpha = 0.22; ctx.fillStyle = '#ff3b3b';
@@ -511,23 +524,27 @@ function drawBone(x, y, a, s) {
 function drawProjs() {
   for (const pr of G.projs) {
     if (pr.kind === 'wave') {
-      ctx.save(); ctx.shadowColor = '#7dd8ff'; ctx.shadowBlur = 14;
+      ctx.globalAlpha = 0.25; ctx.fillStyle = '#7dd8ff';
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r * 1.9, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.strokeStyle = 'rgba(125,216,255,0.9)'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.stroke();
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pr.x, pr.y - 7); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pr.x + 5, pr.y + 2); ctx.stroke();
-      ctx.restore();
     } else if (pr.kind === 'ball' || pr.kind === 'boom') {
-      ctx.save(); ctx.shadowColor = '#d8ff5d'; ctx.shadowBlur = 10;
+      ctx.globalAlpha = 0.25; ctx.fillStyle = '#d8ff5d';
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r * 1.9, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.fillStyle = '#cfe86b';
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.fill();
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r - 3, 0.6, 2.4); ctx.stroke();
-      ctx.restore();
     } else if (pr.kind === 'star') {
-      ctx.save(); ctx.translate(pr.x, pr.y); ctx.shadowColor = '#ffe27d'; ctx.shadowBlur = 12;
-      ctx.fillStyle = '#ffe27d';
+      ctx.save(); ctx.translate(pr.x, pr.y);
+      ctx.globalAlpha = 0.3; ctx.fillStyle = '#ffe27d';
+      ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = '#ffe27d';
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const r = i % 2 === 0 ? 11 : 5, a = i * Math.PI / 5 - Math.PI / 2;
@@ -572,9 +589,10 @@ function drawParts(dt) {
 }
 function drawGems() {
   for (const gm of G.gems) {
-    ctx.save(); ctx.shadowColor = '#7dd8ff'; ctx.shadowBlur = 8;
-    ctx.fillStyle = '#9fe8ff';
-    ctx.translate(gm.x, gm.y); ctx.rotate(Math.PI / 4);
+    ctx.globalAlpha = 0.25; ctx.fillStyle = '#7dd8ff';
+    ctx.beginPath(); ctx.arc(gm.x, gm.y, 12, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1; ctx.fillStyle = '#9fe8ff';
+    ctx.save(); ctx.translate(gm.x, gm.y); ctx.rotate(Math.PI / 4);
     const s = 6 + Math.min(4, gm.v);
     ctx.fillRect(-s / 2, -s / 2, s, s);
     ctx.restore();
@@ -597,9 +615,9 @@ function drawPlayer() {
   if (p.invuln > 0 && Math.floor(G.time * 14) % 2 === 0) return; // 무적 깜빡임
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.beginPath(); ctx.ellipse(p.x, p.y + 30, 24, 8, 0, 0, TAU); ctx.fill();
-  const img = SPR[G.char];
+  const pspr = sprFor(G.char, 76, 76);
   ctx.save(); ctx.translate(p.x, p.y); ctx.scale(p.face, 1);
-  if (img && img.complete && img.naturalWidth) ctx.drawImage(img, -38, -44, 76, 76);
+  if (pspr) ctx.drawImage(pspr, -38, -38, 76, 76);
   else { ctx.fillStyle = G.char === 'tobi' ? '#c98a4b' : '#e8e2f2'; ctx.beginPath(); ctx.arc(0, -6, 26, 0, TAU); ctx.fill(); }
   ctx.restore();
   // HP 바
@@ -607,12 +625,13 @@ function drawPlayer() {
   ctx.fillStyle = '#5dff8a'; ctx.fillRect(p.x - 26, p.y - 52, 52 * clamp(p.hp / p.maxHp, 0, 1), 5);
 }
 function drawPartner() {
-  const pt = G.partner, img = SPR[pt.char];
+  const pt = G.partner;
   const bob = Math.sin(G.time * 5) * 3;
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath(); ctx.ellipse(pt.x, pt.y + 22, 16, 5, 0, 0, TAU); ctx.fill();
-  if (img && img.complete && img.naturalWidth) ctx.drawImage(img, pt.x - 26, pt.y - 30 + bob, 52, 52);
+  const pspr = sprFor(pt.char, 52, 52);
+  if (pspr) ctx.drawImage(pspr, pt.x - 26, pt.y - 26 + bob, 52, 52);
   ctx.globalAlpha = 1;
 }
 
