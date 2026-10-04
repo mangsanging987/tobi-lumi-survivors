@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.10.6';
+const ASSET_V = 'v=0.10.7';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -488,7 +488,7 @@ function fireWeapon(w) {
               Math.abs(angDiff(angTo(p.x, p.y, e.x, e.y), sa)) < 0.85) {
             const a = angTo(p.x, p.y, e.x, e.y);
             damageEnemy(e, dmg, Math.cos(a) * 300, Math.sin(a) * 300);
-            if (w.id === 'steelfoot' && !e.isBoss) e.frozen = Math.max(e.frozen, 0.6);
+            if (w.id === 'steelfoot' && !e.isBoss) e.stun = Math.max(e.stun || 0, 0.6);
           }
         }
         G.parts.push({ kind: 'slash', x: p.x, y: p.y, ang: sa, t: -k * 0.05, dur: 0.22, range });
@@ -1086,13 +1086,21 @@ function damageEnemy(e, dmg, kx, ky) {
 function updateEnemies(dt) {
   const p = G.player;
   for (const e of G.enemies) {
-    if (e.frozen > 0) {
-      e.frozen -= dt;
-      if (Math.random() < 6 * dt) // 서리 결정 파티클
-        G.parts.push({ kind: 'frost', x: e.x + rand(-e.r, e.r), y: e.y + rand(-e.r, e.r),
-          vx: rand(-20, 20), vy: rand(-45, -15), t: 0, dur: rand(0.4, 0.8) });
+    if (e.frozen > 0 || (e.stun || 0) > 0) {
+      if (e.frozen > 0) {
+        e.frozen -= dt;
+        if (Math.random() < 6 * dt) // 서리 결정 파티클 (시간 정지)
+          G.parts.push({ kind: 'frost', x: e.x + rand(-e.r, e.r), y: e.y + rand(-e.r, e.r),
+            vx: rand(-20, 20), vy: rand(-45, -15), t: 0, dur: rand(0.4, 0.8) });
+      }
+      if ((e.stun || 0) > 0) {
+        e.stun -= dt;
+        if (Math.random() < 8 * dt) // 기절 별 파티클 (강철 발톱)
+          G.parts.push({ kind: 'stunstar', x: e.x + rand(-e.r, e.r), y: e.y - e.r - 8,
+            vx: rand(-15, 15), vy: rand(-30, -10), t: 0, dur: rand(0.5, 0.9) });
+      }
       continue;
-    } // 시간 정지 중
+    } // 행동 불가 중
     if (e.flash > 0) e.flash -= dt;
     if (e.slow > 0) e.slow -= dt;
     collideRocks(e, e.r); // 돌무더기 충돌
@@ -1298,11 +1306,7 @@ function drawEnemy(e) {
 }
 // ============ Boss: THE LAST TRAIN ============
 function drawBoss(e) {
-  const p = G.player, flash = e.flash > 0;
-  // 급행 중에는 이동 방향을 바라봄 (플레이어 추적 회전 금지)
-  const ang = e.bstate === 'charge' ? e.chargeA
-    : (e.bstate === 'express' || e.bstate === 'express_warn') ? (e.expressDir > 0 ? 0 : Math.PI)
-    : angTo(e.x, e.y, p.x, p.y);
+  const flash = e.flash > 0;
   // 돌진 텔레그래프
   if (e.bstate === 'warn') {
     ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.chargeA);
@@ -1332,7 +1336,7 @@ function drawBoss(e) {
   ctx.translate(e.x, e.y);
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.beginPath(); ctx.ellipse(0, 62, 95, 20, 0, 0, TAU); ctx.fill();
-  ctx.rotate(ang);
+  // 몸통은 회전시키지 않음 (항상 정면)
   const pulse = e.phase === 2 ? Math.sin(G.time * 10) * 0.015 : Math.sin(G.time * 4) * 0.008;
   ctx.scale(1 + pulse, 1 + pulse);
   const BW = 224, BH = 216; // 보스 걷기 애니메이션 (6프레임, 6fps)
@@ -1537,6 +1541,20 @@ function drawParts(dt) {
         ctx.lineTo(fx + Math.cos(an) * s, fy + Math.sin(an) * s);
         ctx.stroke();
       }
+      ctx.globalAlpha = 1;
+    } else if (pt.kind === 'stunstar') { // 기절 별 파티클
+      ctx.globalAlpha = 1 - k;
+      const fx = pt.x + pt.vx * pt.t, fy = pt.y + pt.vy * pt.t, s = 7 * (1 - k * 0.4);
+      ctx.fillStyle = '#ffe45d';
+      ctx.save(); ctx.translate(fx, fy); ctx.rotate(pt.t * 7);
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const rr = i % 2 === 0 ? s : s * 0.42, aa = i * Math.PI / 4;
+        if (i === 0) ctx.moveTo(Math.cos(aa) * rr, Math.sin(aa) * rr);
+        else ctx.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
       ctx.globalAlpha = 1;
     }
   }
@@ -1838,6 +1856,8 @@ const pauseBtn = document.getElementById('pause-btn');
 const pauseScreen = document.getElementById('screen-pause');
 function renderInventory() {
   const p = G.player;
+  const c = CHARS[G.char];
+  const ch = `<div class="inv-row"><span>🐾 ${c.name}</span><span class="inv-desc">✨ ${c.trait}</span></div>`;
   const w = p.weapons.map(x =>
     `<div class="inv-row"><span>${WEAPONS[x.id].icon} ${WEAPONS[x.id].name}</span><span>Lv ${x.lvl}</span></div>`).join('');
   const ps = Object.keys(p.passives).map(id =>
@@ -1845,6 +1865,7 @@ function renderInventory() {
   const ks = Object.keys(p.keepsakes).filter(id => KEEPSAKES[id]).map(id =>
     `<div class="inv-row"><span>${KEEPSAKES[id].icon} ${KEEPSAKES[id].name}</span><span class="inv-desc">${KEEPSAKES[id].desc}</span></div>`).join('');
   document.getElementById('pause-inv').innerHTML =
+    `<h3>🐾 캐릭터 특성</h3>${ch}` +
     `<h3>🔫 무기 (${p.weapons.length}/${MAX_WEAPONS})</h3>${w || '<p class="inv-empty">없음</p>'}` +
     `<h3>✨ 패시브 (${Object.keys(p.passives).length}/${MAX_PASSIVES})</h3>${ps || '<p class="inv-empty">없음</p>'}` +
     `<h3>❖ 유물</h3>${ks || '<p class="inv-empty">없음</p>'}`;
