@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.10.5';
+const ASSET_V = 'v=0.10.6';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -141,6 +141,7 @@ function drawTrashLayer(cx, cy) {
     const t = trashInCell(tx, ty);
     if (!t) continue;
     const s = 96 * t.s;
+    ctx.save();
     ctx.translate(t.x, t.y); ctx.rotate(t.rot);
     ctx.globalAlpha = 0.92;
     ctx.drawImage(spr, -s / 2, -s / 2, s, s * 0.927);
