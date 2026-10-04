@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.10.3';
+const ASSET_V = 'v=0.10.4';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -141,7 +141,6 @@ function drawTrashLayer(cx, cy) {
     const t = trashInCell(tx, ty);
     if (!t) continue;
     const s = 96 * t.s;
-    ctx.save();
     ctx.translate(t.x, t.y); ctx.rotate(t.rot);
     ctx.globalAlpha = 0.92;
     ctx.drawImage(spr, -s / 2, -s / 2, s, s * 0.927);
@@ -242,7 +241,7 @@ const PASSIVES = {
   magnet: { name: '자석 목걸이', icon: '🧲', max: 5, desc: '획득 범위 +25%' },
   paw:    { name: '튼튼한 발바닥', icon: '🐾', max: 5, desc: '최대 HP +10' },
 };
-const SPD_MUL = 0.85; // 전체 속도감 조절 (이동/탄약)
+const SPD_MUL = 0.8; // 전체 속도감 조절 (이동/탄약)
 const ENEMY_TYPES = {
   ticket: { name: '찢어진 티켓', hp: 14, spd: 95,  dmg: 6,  xp: 1, r: 16 },
   glove:  { name: '겨울 장갑',   hp: 11, spd: 125, dmg: 7,  xp: 2, r: 15, dasher: true },
@@ -936,7 +935,8 @@ function spawnBoss() {
     hp: 12000, maxHp: 12000, spd: 46 * SPD_MUL, dmg: 20, xp: 0, r: 70,
     vx: 0, vy: 0, flash: 0, slow: 0, frozen: 0, boneT: 0, dead: false,
     seed: rand(0, TAU), dashT: 0, dashing: 0, tele: 0,
-    bstate: 'idle', bt: 3, chargeA: 0, summonT: 8, ringT: 6, ringR: 0, ringHit: false, phase: 1,
+    bstate: 'idle', bt: 3, chargeA: 0, ringT: 6, ringR: 0, ringHit: false, phase: 1,
+    expressT: 9, passengerT: 15, laneY: 0, expressDir: 1, invulnT: 0, summonWave: 0, summonWaveT: 0,
   });
   G.bossActive = true;
   setBanner('🚂 THE LAST TRAIN');
@@ -944,6 +944,7 @@ function spawnBoss() {
 function updateBoss(e, dt) {
   const p = G.player;
   const spMul = e.slow > 0 ? 0.45 : 1;
+  if (e.invulnT > 0) e.invulnT -= dt;
   if (e.hp < e.maxHp * 0.5 && e.phase === 1) {
     e.phase = 2;
     setBanner('🚂 분노의 질주!');
@@ -953,8 +954,25 @@ function updateBoss(e, dt) {
   const a = angTo(e.x, e.y, p.x, p.y);
   if (e.bstate === 'idle') {
     e.x += Math.cos(a) * e.spd * spMul * dt; e.y += Math.sin(a) * e.spd * spMul * dt;
-    e.bt -= dt;
+    e.bt -= dt; e.expressT -= dt; e.passengerT -= dt;
     if (e.bt <= 0) { e.bstate = 'warn'; e.bt = 1.0; }
+    else if (e.expressT <= 0) { // 🚂 급행 통과: 레인 예고 후 가로 돌진
+      e.expressT = e.phase === 2 ? 11 : 15;
+      e.bstate = 'express_warn'; e.bt = 1.2;
+      e.laneY = p.y;
+      e.expressDir = Math.random() < 0.5 ? 1 : -1;
+      e.x = p.x - e.expressDir * Math.max(W, H) * 0.75; e.y = e.laneY;
+      setBanner('🚂 급행 통과!');
+      G.floats.push({ x: p.x, y: p.y - 70, txt: '🚂 급행 통과!', t: 0, big: true });
+    } else if (e.passengerT <= 0) { // 🚂 승객 소환: 무적 + 웨이브 소환
+      e.passengerT = e.phase === 2 ? 14 : 19;
+      e.bstate = 'summon'; e.bt = 4; e.invulnT = 4;
+      e.summonWave = 0; e.summonWaveT = 0;
+      setBanner('🚂 승객 소환!');
+      G.floats.push({ x: e.x, y: e.y - 90, txt: '🛡️ 무적! 승객 소환!', t: 0, big: true });
+      G.shake = Math.max(G.shake, 8);
+      G.parts.push({ kind: 'ring', x: e.x, y: e.y, t: 0, dur: 0.6, R: 240 });
+    }
   } else if (e.bstate === 'warn') {
     e.chargeA = a; e.bt -= dt;
     if (e.bt <= 0) { e.bstate = 'charge'; e.bt = 0.9; G.shake = Math.max(G.shake, 9); }
@@ -963,12 +981,33 @@ function updateBoss(e, dt) {
     e.x += Math.cos(e.chargeA) * sp * dt; e.y += Math.sin(e.chargeA) * sp * dt;
     e.bt -= dt;
     if (e.bt <= 0) { e.bstate = 'idle'; e.bt = e.phase === 2 ? 2 : 3; }
-  }
-  e.summonT -= dt;
-  if (e.summonT <= 0) {
-    e.summonT = e.phase === 2 ? 8 : 11;
-    for (let i = 0; i < 3; i++) spawnMinion('ticket', e.x + rand(-60, 60), e.y + rand(-60, 60));
-    G.shake = Math.max(G.shake, 4);
+  } else if (e.bstate === 'express_warn') {
+    e.bt -= dt;
+    if (e.bt <= 0) { e.bstate = 'express'; G.shake = Math.max(G.shake, 10); }
+  } else if (e.bstate === 'express') {
+    e.x += e.expressDir * 950 * SPD_MUL * dt;
+    if (Math.random() < 0.7)
+      G.parts.push({ kind: 'poof', x: e.x - e.expressDir * 70, y: e.y + rand(-45, 45),
+        vx: rand(-80, 80), vy: rand(-80, 80), t: 0, dur: 0.4 });
+    if (Math.abs(e.x - p.x) > Math.max(W, H) * 0.8) { // 통과 완료: 파편 낙석
+      for (let i = 0; i < 3; i++)
+        G.zones.push({ kind: 'rockwarn', x: p.x + rand(-220, 220), y: e.laneY + rand(-60, 60),
+          r: 42, t: 0.9, dur: 0.9, tick: 99, pdmg: 16 });
+      e.bstate = 'idle'; e.bt = e.phase === 2 ? 2 : 3;
+    }
+  } else if (e.bstate === 'summon') {
+    e.bt -= dt; e.summonWaveT -= dt;
+    if (e.summonWaveT <= 0 && e.summonWave < 3) {
+      e.summonWave++; e.summonWaveT = 1.1;
+      const types = ['ticket', 'glove', 'can'];
+      for (let i = 0; i < 3; i++) {
+        const sa = rand(0, TAU);
+        spawnMinion(types[(e.summonWave + i) % 3], e.x + Math.cos(sa) * 95, e.y + Math.sin(sa) * 95);
+      }
+      G.shake = Math.max(G.shake, 5);
+      G.parts.push({ kind: 'ring', x: e.x, y: e.y, t: 0, dur: 0.4, R: 190 });
+    }
+    if (e.bt <= 0) { e.bstate = 'idle'; e.bt = 2; }
   }
   if (e.phase === 2) {
     e.ringT -= dt;
@@ -1012,6 +1051,7 @@ function spawnEnemy(force) {
 }
 function damageEnemy(e, dmg, kx, ky) {
   if (e.dead) return;
+  if (e.invulnT > 0) return; // 승객 소환 중 무적
   e.hp -= dmg; e.flash = 0.12;
   e.vx += kx * 0.02 * SPD_MUL; e.vy += ky * 0.02 * SPD_MUL;
   G.floats.push({ x: e.x, y: e.y - e.r - 6, txt: Math.round(dmg), t: 0 });
@@ -1265,6 +1305,24 @@ function drawBoss(e) {
     ctx.globalAlpha = 0.16 + 0.1 * Math.sin(G.time * 20); ctx.fillStyle = '#ff3b3b';
     ctx.fillRect(0, -55, 1400, 110);
     ctx.restore(); ctx.globalAlpha = 1;
+  }
+  // 급행 통과 예고: 빨간 레인 밴드
+  if (e.bstate === 'express_warn') {
+    const pulse = 0.16 + 0.12 * Math.sin(G.time * 16);
+    ctx.globalAlpha = pulse; ctx.fillStyle = '#ff3b3b';
+    ctx.fillRect(-3000, e.laneY - 70, 6000, 140);
+    ctx.globalAlpha = 0.85; ctx.strokeStyle = '#ff8080'; ctx.lineWidth = 3;
+    ctx.setLineDash([16, 10]);
+    ctx.strokeRect(-3000, e.laneY - 70, 6000, 140);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+  // 승객 소환 중 무적 실드
+  if (e.invulnT > 0) {
+    ctx.globalAlpha = 0.45 + 0.2 * Math.sin(G.time * 12);
+    ctx.strokeStyle = '#7dd8ff'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(e.x, e.y, 135, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   ctx.save();
   ctx.translate(e.x, e.y);
