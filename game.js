@@ -31,7 +31,7 @@ function loadSprite(key, src) {
   img.onerror = () => { sprLoaded++; };
   img.src = src; SPR[key] = img;
 }
-const ASSET_V = 'v=0.10.4';
+const ASSET_V = 'v=0.10.5';
 loadSprite('tobi', 'assets/tobi-battle.png?' + ASSET_V);
 loadSprite('lumi', 'assets/lumi-battle.png?' + ASSET_V);
 // 캐릭터 걷기 애니메이션 프레임 (6프레임)
@@ -1298,7 +1298,10 @@ function drawEnemy(e) {
 // ============ Boss: THE LAST TRAIN ============
 function drawBoss(e) {
   const p = G.player, flash = e.flash > 0;
-  const ang = e.bstate === 'charge' ? e.chargeA : angTo(e.x, e.y, p.x, p.y);
+  // 급행 중에는 이동 방향을 바라봄 (플레이어 추적 회전 금지)
+  const ang = e.bstate === 'charge' ? e.chargeA
+    : (e.bstate === 'express' || e.bstate === 'express_warn') ? (e.expressDir > 0 ? 0 : Math.PI)
+    : angTo(e.x, e.y, p.x, p.y);
   // 돌진 텔레그래프
   if (e.bstate === 'warn') {
     ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.chargeA);
@@ -1308,7 +1311,7 @@ function drawBoss(e) {
   }
   // 급행 통과 예고: 빨간 레인 밴드
   if (e.bstate === 'express_warn') {
-    const pulse = 0.16 + 0.12 * Math.sin(G.time * 16);
+    const pulse = 0.22 + 0.08 * Math.sin(G.time * 6);
     ctx.globalAlpha = pulse; ctx.fillStyle = '#ff3b3b';
     ctx.fillRect(-3000, e.laneY - 70, 6000, 140);
     ctx.globalAlpha = 0.85; ctx.strokeStyle = '#ff8080'; ctx.lineWidth = 3;
